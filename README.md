@@ -49,7 +49,7 @@ Below, we give you the key points about the provided topology and your task: suc
 -   Each host is connected to a P4 switch (`S1` -- `S6`) at the edge of your network, which you can program during this challenge.
     All P4 switches are managed by a central controller (not shown), which you can also program.
     The switches and controller we provide you are already capable of L2 forwarding to ensure connectivity in your network.
-    In addition to the modifying the P4 program of each switch, you also have access to the Linux nodes the switches are running on, which allows you to run commands such as `tc`.
+    In addition to modifying the P4 program of each switch, you also have access to the Linux nodes the switches are running on, which allows you to run commands such as `tc`.
 
 -   In the core of your network are four routers running [FRR][frr].
     The interfaces as well as OSPF are already configured to ensure connectivity. The OSPF weight of each link is initialized to 10.
