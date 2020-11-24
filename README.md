@@ -238,12 +238,13 @@ The provided controller already installs the required rules for L2 forwarding on
 
 Finally, you may find yourself in need of some additional dependencies.
 If anything has to be installed, be sure to add this requirement to `configuration/requirements.txt`. ([What are requirement files?][reqfiles])
+Only requirements from [PyPI][pypi] are allowed, i.e. requirements that you can install "normally" via `pip install <req>`.
 
-> Please avoid installing excessive additional requirements.
-> While we want to give you flexibility to program your controllers, we reserve the right to *not* install particular requirements.
-> This may result in your controller not working. Please ask us if you are unsure whether you can use a requirement or not.
+> Pip is a powerful tool that is capable of installing requirements from github and other sources, but you *must not* do this for this project.
+> We will not install any requirement that does not come from PyPI, and using them may result in your controller not working.
 
 [reqfiles]: https://pip.pypa.io/en/latest/user_guide/#requirements-files
+[pypi]: https://pypi.org
 
 
 ## Building the topology and running scenarios
