@@ -4,7 +4,7 @@
 > If we do, the only thing you will have to do is run the following command in the repository in your VM:
 
 ```bash
-git pull git@gitlab.ethz.ch:nsg/public/adv-net-2020-project.git master
+git pull https://gitlab.ethz.ch/nsg/public/adv-net-2020-project.git master
 ```
 
 During this year's project, you and your group are responsible for configuring the network shown below.
