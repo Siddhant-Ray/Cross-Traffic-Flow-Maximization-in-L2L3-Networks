@@ -1,0 +1,27 @@
+{
+    "program": "../configuration/p4switches/switch.p4",
+    "switch": "simple_switch",
+    "compiler": "p4c",
+    "options": "--target bmv2 --arch v1model --std p4-16",
+    "switch_cli": "simple_switch_CLI",
+    "switches": {
+        "S1": {
+            "cli_input": "../configuration/p4switches/S1-commands.txt"
+        },
+        "S2": {
+            "cli_input": "../configuration/p4switches/S2-commands.txt"
+        },
+        "S3": {
+            "cli_input": "../configuration/p4switches/S3-commands.txt"
+        },
+        "S4": {
+            "cli_input": "../configuration/p4switches/S4-commands.txt"
+        },
+        "S5": {
+            "cli_input": "../configuration/p4switches/S5-commands.txt"
+        },
+        "S6": {
+            "cli_input": "../configuration/p4switches/S6-commands.txt"
+        }
+    }
+}
