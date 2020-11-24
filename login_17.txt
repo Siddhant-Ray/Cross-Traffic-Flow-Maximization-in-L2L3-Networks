@@ -1,0 +1,4 @@
+host: westvleteren.ethz.ch
+login: adv-net
+port: 2117
+password: ehgyalunvd
