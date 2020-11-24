@@ -1,0 +1,19 @@
+*.pyc
+
+# Emacs
+*~
+ls
+
+# Compiled JSON
+*.json
+!*config*.json
+
+*p4i
+*p4rt
+
+*.pcap
+*.db
+
+# Mini-internet files
+build/topo/router_config.txt
+shared/
