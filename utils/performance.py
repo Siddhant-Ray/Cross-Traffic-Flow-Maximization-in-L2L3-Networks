@@ -83,10 +83,12 @@ class Performance(object):
 
         self._count_points()
         weighted_performance = 0
-
         for traffic_type, packets in self._traffic_counts.items():
             # type weighted performance
-            _performance = (packets["pkts_out"]/packets["pkts_in"]) * (traffic_weights[traffic_type])/(sum(traffic_weights.values()))
+            if packets["pkts_in"] == 0:
+                _performance = 0
+            else:
+                _performance = (packets["pkts_out"]/packets["pkts_in"]) * (traffic_weights[traffic_type])/(sum(traffic_weights.values()))
             weighted_performance += _performance
 
         return weighted_performance
@@ -100,8 +102,13 @@ class Performance(object):
         weighted_performance = self.get_weighted_perfomance()
         for traffic_type, traffic_name in traffic_names.items():
             packets = self._traffic_counts[traffic_type]
-            _performance = (packets["pkts_out"]/packets["pkts_in"])
-            print("{:10} {:.5f}".format(traffic_names[traffic_type], _performance))
+            warning = ""
+            if packets["pkts_in"] == 0:
+                _performance = 0
+                warning = "\033[31m(warning: you did not send traffic for this type)\033[39m"
+            else:
+                _performance = (packets["pkts_out"]/packets["pkts_in"])
+            print("{:10} {:.5f} {}".format(traffic_names[traffic_type], _performance, warning))
         print("-------------------------------")
         print("Weighted   {:.5f}".format(weighted_performance))
 

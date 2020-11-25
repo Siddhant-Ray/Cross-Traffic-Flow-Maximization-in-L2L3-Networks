@@ -36,10 +36,10 @@ class Scheduler(object):
         start_time = float(kwargs['start_time'])
         if time.time() > start_time:
             # Note: Do not raise to avoid stacktrace etc.
-            print("Invalid start time in the past")
+            print("\033[31mWarning: Invalid start time in the past. This flow won't start. Rerun the experiment\033[31m")
             sys.exit(1)
             return
-
+            
         # wait before starting
         time.sleep(start_time - time.time())
 
