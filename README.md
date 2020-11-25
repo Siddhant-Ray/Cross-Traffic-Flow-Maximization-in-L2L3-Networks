@@ -320,12 +320,13 @@ Concretely, the following happens first:
 1. The network is built (`./cli.sh build`).
 2. Requirements are installed (`./cli.sh install-requirements`).
 3. The P4 programs are compiled and the P4 switches are started, along with static rules (`./cli.sh start-switches`).
+4. Configuration scripts are executed (`./cli.sh configure-nodes`).
 
 > The first time you build the network it will take few minutes because the script pulls several docker images, after it should be faster.
 
-Afterwards, the following things happen *at the same time*:
+Right after the configuration commands have been sent, the following happens *at the same time*:
+
 - Traffic and failure generation is started (`./cli.sh run-scenario`).
-- Configuration scripts are executed (`./cli.sh configure-nodes`).
 - The controller for P4 switches is started (`./cli.sh run-controller`).
 
 As described above, traffic and failures will not begin immediately, so your routers and controller will have a few seconds to converge to their final state.
