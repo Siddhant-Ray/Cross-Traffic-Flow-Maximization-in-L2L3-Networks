@@ -234,6 +234,8 @@ The controller is started with the selected traffic scenario and automatically p
 The controller variable `traffic` contains a list of dictionaries.
 Each dict contains the information of one flow, such as `src`, `dst`, etc.
 
+:no_entry: The controller has not accessed to the failure scenario. You are not allowed to read the scenario files from the controller, and you can't use Open vSwitch commands to detect a failure (we use Open vSwitches to simulate silent failures, instead of bringing the interface down). As in a real network, to detect failures you have to rely on the protocols provided by the routers and/or you can implement your own failure detection mechanism in P4 and use it in the switches. 
+
 The provided controller already installs the required rules for L2 forwarding onto the switches.
 
 Finally, you may find yourself in need of some additional dependencies.
