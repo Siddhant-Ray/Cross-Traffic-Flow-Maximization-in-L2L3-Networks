@@ -4,7 +4,7 @@
 > If we do, the only thing you will have to do is run the following command in the repository in your VM:
 
 ```bash
-git pull git@gitlab.ethz.ch:nsg/public/adv-net-2020-project.git master
+git pull https://gitlab.ethz.ch/nsg/public/adv-net-2020-project.git master
 ```
 
 During this year's project, you and your group are responsible for configuring the network shown below.
@@ -240,12 +240,13 @@ The provided controller already installs the required rules for L2 forwarding on
 
 Finally, you may find yourself in need of some additional dependencies.
 If anything has to be installed, be sure to add this requirement to `configuration/requirements.txt`. ([What are requirement files?][reqfiles])
+Only requirements from [PyPI][pypi] are allowed, i.e. requirements that you can install "normally" via `pip install <req>`.
 
-> Please avoid installing excessive additional requirements.
-> While we want to give you flexibility to program your controllers, we reserve the right to *not* install particular requirements.
-> This may result in your controller not working. Please ask us if you are unsure whether you can use a requirement or not.
+> Pip is a powerful tool that is capable of installing requirements from github and other sources, but you *must not* do this for this project.
+> We will not install any requirement that does not come from PyPI, and using them may result in your controller not working.
 
 [reqfiles]: https://pip.pypa.io/en/latest/user_guide/#requirements-files
+[pypi]: https://pypi.org
 
 
 ## Building the topology and running scenarios
@@ -321,12 +322,13 @@ Concretely, the following happens first:
 1. The network is built (`./cli.sh build`).
 2. Requirements are installed (`./cli.sh install-requirements`).
 3. The P4 programs are compiled and the P4 switches are started, along with static rules (`./cli.sh start-switches`).
+4. Configuration scripts are executed (`./cli.sh configure-nodes`).
 
 > The first time you build the network it will take few minutes because the script pulls several docker images, after it should be faster.
 
-Afterwards, the following things happen *at the same time*:
+Right after the configuration commands have been sent, the following happens *at the same time*:
+
 - Traffic and failure generation is started (`./cli.sh run-scenario`).
-- Configuration scripts are executed (`./cli.sh configure-nodes`).
 - The controller for P4 switches is started (`./cli.sh run-controller`).
 
 As described above, traffic and failures will not begin immediately, so your routers and controller will have a few seconds to converge to their final state.
