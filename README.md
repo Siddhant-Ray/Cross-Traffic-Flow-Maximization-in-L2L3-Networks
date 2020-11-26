@@ -234,11 +234,9 @@ The controller is started with the selected traffic scenario and automatically p
 The controller variable `traffic` contains a list of dictionaries.
 Each dict contains the information of one flow, such as `src`, `dst`, etc.
 
-:no_entry: The controller cannot access the failure scenario.
-You are not allowed to read the failure scenario files from the controller, and you must not use Open vSwitch commands (`ovs-ofctl`) to check whether we have failed a link (we use Open vSwitches to simulate silent failures, instead of bringing the interface down).
-As in a real network, to detect failures you have to rely on the protocols provided by the routers and/or you can implement your own failure detection mechanism in P4 and use it in the switches. 
-
 The provided controller already installs the required rules for L2 forwarding onto the switches.
+
+:no_entry: The controller may only interact with the P4 switches, and nothing else. Aside from the (already provided) traffic scenario, the controller must not attempt to read any traffic or failure files, nor run any commands interacting with the infrastructure, in particular no `docker` or `ovs-ofctl` commands.
 
 Finally, you may find yourself in need of some additional dependencies.
 If anything has to be installed, be sure to add this requirement to `configuration/requirements.txt`. ([What are requirement files?][reqfiles])
