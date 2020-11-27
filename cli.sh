@@ -237,14 +237,16 @@ function pipeline
     install-requirements
     start-switches
 
+    # The configure node calls to docker exec can block the traffic generator,
+    # so we have to do it before to avoid timing issues.
+    configure-nodes
+
     # Controller and router config is loaded at the same time as the scenario.
     # They have a few seconds to converge before traffic actually starts.
     run $@ & runpid=$!
     controller $@ & controllerpid=$!
-    configure-nodes & configpid=$!
 
     wait $runpid || return $error
-    wait $configpid || return $usererror
  
     # The controller might loop -> kill it if it's still running.
     if ! kill $controllerpid > /dev/null 2>&1; then
