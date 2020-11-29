@@ -124,6 +124,13 @@ class Controller(object):
             # Update group.
             controller.mc_node_create(0, port_list)
             controller.mc_node_associate(1, 0)
+    
+    def set_table_defaults(self):
+        """Set table defaults to drop
+        """
+        for controller in self.controllers.values():
+            controller.table_set_default("ipv4_lpm", "drop", [])
+            controller.table_set_default("ecmp_group_to_nhop", "drop", [])
 
     def ECMP_route(self):
         """Populates the tables for ECMP"""
@@ -136,7 +143,7 @@ class Controller(object):
                 if  sw_name == sw_dst:
                     for host in self.topo.get_hosts_connected_to(sw_name):
                         sw_port = self.topo.node_to_node_port_num(sw_name, host)
-                        host_ip = self.topo.get_host_ip(host) + "/32"
+                        host_ip = self.topo.get_host_ip(host) + "/24"
                         host_mac = self.topo.get_host_mac(host)
 
                         #add ECMP table rules

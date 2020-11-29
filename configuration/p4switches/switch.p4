@@ -7,7 +7,7 @@ const bit<16> TYPE_IPV4 = 0x800;
 #define REGISTER_SIZE 8192
 #define TIMESTAMP_WIDTH 48
 #define ID_WIDTH 16
-#define FLOWLET_TIMEOUT 48w200000 //200ms
+#define FLOWLET_TIMEOUT 48w100000 //100ms
 
 
 /*************************************************************************
