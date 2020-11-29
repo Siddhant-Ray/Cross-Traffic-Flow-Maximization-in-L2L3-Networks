@@ -14,6 +14,8 @@ ls
 *.pcap
 *.db
 
+clean_tc.sh
+
 # Mini-internet files
 build/topo/router_config.txt
 shared/
