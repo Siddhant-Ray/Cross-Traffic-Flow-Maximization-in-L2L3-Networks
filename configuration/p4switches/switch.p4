@@ -120,7 +120,7 @@ parser MyParser(packet_in packet,
     state parse_ipv4 {
         packet.extract(hdr.ipv4);
         transition select(hdr.ipv4.protocol){
-            6 : parse_udp;
+            17 : parse_udp;
             default: accept;
         }
     }
@@ -188,6 +188,8 @@ control MyIngress(inout headers hdr,
         flowlet_to_id.write((bit<32>)meta.flowlet_register_index, (bit<16>)meta.flowlet_id);
     }
 
+
+  //action to compute the ecmp group for next hop
   action ecmp_group(bit<14> ecmp_group_id, bit<16> num_nhops){
         hash(meta.ecmp_hash,
             HashAlgorithm.crc16,
@@ -203,15 +205,16 @@ control MyIngress(inout headers hdr,
             meta.ecmp_group_id = ecmp_group_id;
     }
 
+    //action for routing the next hop 
     action set_nhop(macAddr_t dstAddr, egressSpec_t port) {
 
         //set the src mac address as the previous dst
         hdr.ethernet.srcAddr = hdr.ethernet.dstAddr;
 
-       //set the destination mac address that we got from the match in the table
+       //set the destination mac address 
         hdr.ethernet.dstAddr = dstAddr;
 
-        //set the output port that we also get from the table
+        //set the output port 
         standard_metadata.egress_spec = port;
 
         //decrease ttl by 1
@@ -284,7 +287,8 @@ control MyIngress(inout headers hdr,
                     update_flowlet_id();
                 }
             }
-
+	    
+	    //Apply the ecmp group next hop 
             switch (ipv4_lpm.apply().action_run){
                 ecmp_group: {
                     ecmp_group_to_nhop.apply();
