@@ -156,7 +156,7 @@ class AppRunner(object):
         for switch in self.topo.get_switches():
             self.stop_switch(switch)
 
-    def reboot_switches(switch):
+    def reboot_switches(self):
         self.stop_switches()
         time.sleep(1)
         self.start_switches()
