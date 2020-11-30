@@ -10,7 +10,7 @@ This will execute the whole file, but then *keep* the python interpreter open,
 allowing you to inspect objects and try out things!
 
 ```
-$ python2 -i controller.py --topo <path to build/topology.db>
+$ python2 -i controller.py --topo </build/topology.db>
 ```
 
 The controller will be available as the variable `control`.
@@ -19,6 +19,9 @@ The controller will be available as the variable `control`.
 
 import argparse
 import csv
+import time
+#LFA RELATED IMPORTS
+from networkx.algorithms import all_pairs_dijkstra
 
 from p4utils.utils.topology import Topology
 from p4utils.utils.sswitch_API import SimpleSwitchAPI
@@ -40,7 +43,7 @@ class Controller(object):
         # Basic initialization. *Do not* change.
         self.controllers = {}
         self._connect_to_switches()
-        self._reset_states()
+        self._reset_states()        
 
         # Start main loop
         self.main()
@@ -79,7 +82,20 @@ class Controller(object):
         
         #Call ECMP route
         self.ECMP_route()
-        #do_something()
+
+        #Installing LFAs
+        # Install nexthop indices and populate registers.
+        self.install_nexthop_indices_LFA() # This installs the indices, which get used to query Link Status
+        self.update_nexthops_LFA()  # This matches ports to indices, so that we can check their linkstate in P4
+        
+        self.setup_link_map() #THis includes Routers in the switchgraph        
+        self.install_link_register() #Sets up the registers that track downed interfaces
+        self.LFA_flag = 0 #This is changed when there was a change in status of at least one link
+        # self.i_test = 0
+
+        while(True):
+            self.check_interface_status() #Function that still needs to be written, that updates
+            self.trigger_lfa()            
 
     def add_l2_forwarding_rules(self):
         """Add L2 forwarding groups to all switches.
@@ -195,14 +211,328 @@ class Controller(object):
                                     print "table_add at {}:".format(sw_name)
                                     self.controllers[sw_name].table_add("ipv4_lpm", "ecmp_group", [str(host_ip)],[str(new_ecmp_group_id), str(len(dst_macs_ports))])
 
+    ####################### LFA INSTALL ################################
+    # Link management commands.
+    # =========================
+
+    def check_interface_status(self): #This needs to be triggered by OSPF to notice a link state is down
+        #This will need to be generated somehow
+        
+        # if (self.i_test == 1):
+        #     test_link = (u'S3', u'S4')
+        #     self.heartbeat_register[test_link] = 0
+        # if(self.i_test == 3):
+        #     test_link = (u'S3', u'S4')
+        #     self.heartbeat_register[test_link] = 1
+        
+        #Need to account for duplicates, especially if they disagree
+
+        self.LFA_flag = 0 #This flag gets raised if there was a transition in the heartbeat register
+
+        for link in self.heartbeat_register:
+            status = self.heartbeat_register[link]
+            current_reg_value = self.links_states[link]
+
+            heartbeat_state = "down" if status == 0 else "up" #For now, assume that heartbeat  is 0 or 1
+
+            if heartbeat_state == current_reg_value:
+                pass
+            else:
+                self.LFA_flag = 1 #As soon as there is one transition, this becomes 1
+                if status == 0: #That is, if its down
+                    self.update_interfaces(link, "down") # Set the self.interfaces dictionary that Pyton uses
+                    self.update_linkstate(link, "down")  # Sets the P4 registers          
+                else:
+                    self.update_interfaces(link, "up")  # See above
+                    self.update_linkstate(link, "up")   # See above
+
+        # self.i_test = self.i_test  + 1
 
 
+    def trigger_lfa(self):  
+        """Notify controller of failures (or lack thereof)."""
+        failed = self.check_all_links()
+        if self.LFA_flag: #So if there was a change
+            print("Processing change in Heartbeat")
+            self.failure_notification(failed)
+        else:
+            pass #Otherwise, continue on as before
+
+     # Link management helpers.
+    # ========================
+
+    def check_all_links(self):
+        """Check the state for all link interfaces."""
+        failed_links = []
+        for link in self.accessible_links:
+            if not (self.if_up(link)): #Triggered thus by not (False)
+                failed_links.append(link)
+        return failed_links
+ 
+    def if_up(self, link):
+        """Return True if interface is up, else False."""
+        status = self.links_states[link]
+        if status == "up":
+            return True
+        else:
+            return False
+
+    def update_interfaces(self, link, state):
+        """Set link to state (up or down)."""
+        self.links_states[link] = state     
+
+    def get_interfaces(self, link):
+        """Return tuple of interfaces on both sides of the link."""
+        node1, node2 = link
+        if_12 = self.topo[node1][node2]['intf']
+        if_21 = self.topo[node2][node1]['intf']
+        return if_12, if_21
+
+    def get_ports(self, link):
+        """Return tuple of interfaces on both sides of the link."""
+        node1, node2 = link
+        if1, if2 = self.get_interfaces(link)
+        port1 = self.topo[node1]['interfaces_to_port'][if1]
+        port2 = self.topo[node2]['interfaces_to_port'][if2]
+        return port1, port2
+
+    def update_linkstate(self, link, state):
+        """Update switch linkstate register for both link interfaces.
+
+        The register array is indexed by the port number, e.g., the state for
+        port 0 is stored at index 0.
+        """
+        node1, node2 = link        
+        port1, port2 = self.get_ports(link)
+        switches = self.topo.get_switches()
+        _state = "1" if state == "down" else "0"
+       
+        if node1 in switches:
+            self.update_switch_linkstate(node1, port1, _state)
+        
+        if node2 in switches:
+            self.update_switch_linkstate(node2, port2, _state)
+
+    def update_switch_linkstate(self, switch, port, state):
+        """Update the link state register on the device. """
+        control = self.controllers[switch]
+        control.register_write('linkState', port, state)
+
+    # THE LFA CONTROLLER
+    def install_link_register(self):
+        """install registers used to track linkstate."""
+        self.links_states = {}
+        self.heartbeat_register = {}
+        for link in self.accessible_links:
+            self.links_states[link] = "up" # This register is for the controller itself
+            self.heartbeat_register[link] = 1 #This register is updated continously by the heartbeat message
+        print("Registers installed")
+    
+    def setup_link_map(self):
+        """Like Switchgraph, but also includes Routers"""
+        self.accessible_links = []
+        links_all = self.topo.network_graph.edges
+        hosts = self.topo.get_hosts().keys()
+        routers = self.topo.get_routers().keys()
+        for link in links_all:
+            if link[0] in hosts or link[1] in hosts:
+                pass
+            elif link[0] in routers and link[1] in routers:
+                pass
+            else:
+                self.accessible_links.append(link)
+
+        print("Accessible Link Map Setup")
+
+    def get_host_net(self, host): #Imported from Exercise
+        """Return ip and subnet of a host.
+
+        Args:
+            host (str): The host for which the net will be retruned.
+
+        Returns:
+            str: IP and subnet in the format "address/mask".
+        """
+        gateway = self.topo.get_host_gateway_name(host)
+        return self.topo[host][gateway]['ip']
+
+    def get_nexthop_index(self, host): #Imported from Exercise
+        """Return the nexthop index for a destination.
+
+        Args:
+            host (str): Name of destination node (host).
+
+        Returns:
+            int: nexthop index, used to look up nexthop ports.
+        """
+        # For now, give each host an individual nexthop id.
+        host_list = sorted(list(self.topo.get_hosts().keys()))
+        return host_list.index(host)
+
+    def get_port(self, node, nexthop_node): #Imported from Exercise
+        """Return egress port for nexthop from the view of node.
+
+        Args:
+            node (str): Name of node for which the port is determined.
+            nexthop_node (str): Name of node to reach.
+
+        Returns:
+            int: nexthop port
+        """
+        return self.topo.node_to_node_port_num(node, nexthop_node)
+
+    def failure_notification(self, failures): # This method gets called by the check_all_links method
+        """Called if a link fails.
+
+        Args:
+            failures (list(tuple(str, str))): List of failed links.
+        """
+        self.update_nexthops_LFA(failures=failures)
+    
+    def dijkstra(self, failures=None): #Imported from Exercise
+        """Compute shortest paths and distances.
+
+        Args:
+            failures (list(tuple(str, str))): List of failed links.
+
+        Returns:
+            tuple(dict, dict): First dict: distances, second: paths.
+        """
+        graph = self.topo.network_graph
+
+        if failures is not None:
+            graph = graph.copy()
+            for failure in failures:
+                graph.remove_edge(*failure)
+
+        # Compute the shortest paths from switches to hosts.
+        dijkstra = dict(all_pairs_dijkstra(graph, weight='weight'))
+
+        distances = {node: data[0] for node, data in dijkstra.items()}
+        paths = {node: data[1] for node, data in dijkstra.items()}
+
+        return distances, paths
+
+    def compute_nexthops(self, failures=None): #Imported from Exercise
+        """Compute the best nexthops for all switches to each host.
+
+        Optionally, a link can be marked as failed. This link will be excluded
+        when computing the shortest paths.
+
+        Args:
+            failures (list(tuple(str, str))): List of failed links.
+
+        Returns:
+            dict(str, list(str, str, int))):
+                Mapping from all switches to subnets, MAC, port.
+        """
+        # Compute the shortest paths from switches to hosts.
+        all_shortest_paths = self.dijkstra(failures=failures)[1]
+
+        # Translate shortest paths to mapping from host to nexthop node
+        # (per switch).
+        results = {}
+        for switch in self.controllers:
+            switch_results = results[switch] = []
+            for host in self.topo.network_graph.get_hosts():
+                try:
+                    path = all_shortest_paths[switch][host]
+                except KeyError:
+                    print "WARNING: The graph is not connected!"
+                    print "'%s' cannot reach '%s'." % (switch, host)
+                    continue
+                nexthop = path[1]  # path[0] is the switch itself.
+                switch_results.append((host, nexthop))
+
+        return results
+
+    def install_nexthop_indices_LFA(self): 
+        """Install the mapping from prefix to nexthop ids for all switches."""
+        for switch, control in self.controllers.items():
+            print "Installing nexthop indices for LFA setup '%s'." % switch
+            print "===========================================\n"
+            control.table_clear('dst_index')
+            for host in self.topo.get_hosts():
+                subnet = self.get_host_net(host)
+                index = self.get_nexthop_index(host)
+                control.table_add('dst_index', 'query_nextLink',
+                                  [subnet], [str(index)])
+
+    def update_nexthops_LFA(self, failures=None):
+        """Install nexthops in all switches."""
+        nexthops = self.compute_nexthops(failures=failures) # We need to link the ECMP here with the LFA, so that the nexthops used here are the ECMP ones
+        lfas = self.compute_lfas(nexthops, failures=failures)
+
+        for switch, destinations in nexthops.items():
+            control = self.controllers[switch]
+            for host, nexthop in destinations:
+                nexthop_id = self.get_nexthop_index(host)
+                port = self.get_port(switch, nexthop)
+                # Write the port in the nexthop lookup register.
+                control.register_write('primaryNH', nexthop_id, port)
+
+        #######################################################################
+        # Compute loop-free alternate nexthops and install them below.
+        #######################################################################
+
+        # LFA solution.
+        # =============
+       
+        for host, nexthop in destinations:
+            nexthop_id = self.get_nexthop_index(host)
+            if host == nexthop:
+                continue  # Cannot do anything if host link fails.
+
+            try:
+                lfa_nexthop = lfas[switch][host]
+            except KeyError:
+                lfa_nexthop = nexthop  # Fallback to default nh.
+
+            lfa_port = self.get_port(switch, lfa_nexthop)
+            control.register_write('alternativeNH', nexthop_id, lfa_port)
+
+    def compute_lfas(self, nexthops, failures=None):
+        """Compute LFA (loop-free alternates) for all nexthops."""
+        _d = self.dijkstra(failures=failures)[0]
+        lfas = {}
+        for switch, destinations in nexthops.items():
+            switch_lfas = lfas[switch] = {}
+            # connected = set(self.topo.get_switches_connected_to(switch))
+            #Alternate:
+            neighbours = set(self.topo.get_neighbors(switch))
+            connected_hosts = self.topo.get_hosts_connected_to(switch)[0] #each switch is connected to just one host
+            connected = neighbours - {connected_hosts}
+
+            for host, nexthop in destinations:
+                if nexthop == host:
+                    continue  # Nothing can be done if host link fails.
+
+                others = connected - {nexthop}
+                # Check with alternates are loop free
+                noloop = []
+                for alternate in others:
+                    # The following condition needs to hold:
+                    # D(N, D) < D(N, S) + D(S, D)
+                    if (_d[alternate][host]
+                            < _d[alternate][switch] + _d[switch][host]):
+                        total_dist = _d[switch][alternate] + \
+                            _d[alternate][host]
+                        noloop.append((alternate, total_dist))
+
+                    if not noloop:
+                        continue  # No LFA :(
+
+                    # Keep LFA with shortest distance
+                    switch_lfas[host] = min(noloop, key=lambda x: x[1])[0]
+
+        return lfas
+    ####################### LFA INSTALL ################################
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--topo', help='Path of topology.db.',
                         type=str, required=False,
-                        default="../build/topology.db")
+                        default="/home/adv-net/infrastructure/build/topology.db")
     parser.add_argument('--traffic', help='Path of traffic scenario.',
                         type=str, required=False,
                         default=None)

@@ -9,6 +9,10 @@ const bit<16> TYPE_IPV4 = 0x800;
 #define ID_WIDTH 16
 #define FLOWLET_TIMEOUT_OTHER 48w200000 //200ms
 
+//LFA ADD
+#define N_PREFS 1024
+#define PORT_WIDTH 32
+#define N_PORTS 512
 
 /*************************************************************************
 *********************** H E A D E R S  ***********************************
@@ -28,7 +32,7 @@ header ethernet_t {
 header ipv4_t {
     bit<4>    version;
     bit<4>    ihl;
-    bit<6>    dscp;
+    bit<6>    dscp; //This is the new name for the TOS field, which is in hex values: 0x80 for Gold, 0x40 for Silver, 0x20 for Bronze 
     bit<2>    ecn;
     bit<16>   totalLen;
     bit<16>   identification;
@@ -73,15 +77,25 @@ header udp_t {
 
 
 struct metadata {
+    
+    // Metadata for ECMP hashing 
     bit<14> ecmp_hash;
     bit<14> ecmp_group_id;
 
+    //Metadata for flowlet switching
     bit<48> flowlet_last_stamp;
     bit<48> flowlet_time_diff;
 
     bit<13> flowlet_register_index;
     bit<16> flowlet_id;
 
+    //Metadata for metering on TOS
+    bit<32> meter_tag;
+
+    //Metadata for LFA
+    bit<1> linkState;
+    bit<32> nextHop;
+    bit<32> index;
 }
 
 struct headers {
@@ -151,7 +165,7 @@ control MyIngress(inout headers hdr,
                   inout metadata meta,
                   inout standard_metadata_t standard_metadata) {
 
-
+                      
     register<bit<ID_WIDTH>>(REGISTER_SIZE) flowlet_to_id;
     register<bit<TIMESTAMP_WIDTH>>(REGISTER_SIZE) flowlet_time_stamp;
   
@@ -159,8 +173,83 @@ control MyIngress(inout headers hdr,
     action drop() {
         mark_to_drop(standard_metadata);
     }
+
+    //********************** ADD FOR LFA********************
+        // Register to look up the port of the default next hop.
+    register<bit<PORT_WIDTH>>(N_PREFS) primaryNH;
+    register<bit<PORT_WIDTH>>(N_PREFS) alternativeNH; 
+
+    // Register containing link states. 0: No Problems. 1: Link failure.
+    // This register is updated by CLI.py, you only need to read from it.
+    register<bit<1>>(N_PORTS) linkState;
+
+
+    action query_nextLink(bit<32>  index){ //Queries LinkState
+        meta.index = index;
+        // Read primary next hop and write result into meta.nextHop. This is not used for the actual nextHop, it is used just to query the Link. 
+        primaryNH.read(meta.nextHop,  meta.index);
+        
+        //Read linkState of default next hop.
+        linkState.read(meta.linkState, meta.nextHop);
+    }
     
+    action read_alternativePort(){ //Called when Link is down to find LFA
+        //Read alternative next hop into metadata
+        alternativeNH.read(meta.nextHop, meta.index);
+    }
+
+    action rewriteMac(macAddr_t dstAddr){ //This updates the destination when the LFA gets triggered
+	    hdr.ethernet.srcAddr = hdr.ethernet.dstAddr;
+        hdr.ethernet.dstAddr = dstAddr;
+        standard_metadata.egress_spec = (bit<9>) meta.nextHop;
+         //decrease ttl by 1
+        hdr.ipv4.ttl = hdr.ipv4.ttl - 1;
+	}
+
+    table dst_index { //Match destination addres to index
+        key = {
+            hdr.ipv4.dstAddr: lpm;
+        }
+        actions = {
+            query_nextLink;
+            drop;
+        }
+        size = 512;
+        default_action = drop;
+    }
+
+    table rewrite_mac { //this matches the LFA to an address
+        key = {
+             meta.nextHop: exact;
+        }
+        actions = {
+            rewriteMac;
+            drop;
+        }
+        size = 512;
+        default_action = drop;
+    }
+
+    
+    //********************** ADD FOR LFA********************
+
+    
+<<<<<<< HEAD
     // Action to read the flowlet registers
+=======
+    //Action to execute the meter
+    action meter_action(bit<32> meter_idx) {
+        tos_meter.execute_meter((bit<32>)meter_idx, meta.meter_tag);
+
+    }      
+
+    //Action to set tos value
+    action set_tos(bit<6> tos) {
+        //tos = hdr.ipv4.dscp; //Currently crashes
+    } 
+
+
+>>>>>>> commented something out
     action read_flowlet_registers(){
 
         //compute the register index
@@ -192,7 +281,7 @@ control MyIngress(inout headers hdr,
 
 
   //action to compute the ecmp group for next hop
-  action ecmp_group(bit<14> ecmp_group_id, bit<16> num_nhops){
+    action ecmp_group(bit<14> ecmp_group_id, bit<16> num_nhops){
         hash(meta.ecmp_hash,
             HashAlgorithm.crc16,
             (bit<1>)0,
@@ -209,22 +298,26 @@ control MyIngress(inout headers hdr,
 
     //action for routing the next hop 
     action set_nhop(macAddr_t dstAddr, egressSpec_t port) {
+        //Adding LFA checks. If Links are up, then ECMP overwrites. Otherwise, the LFA table already takes care of this, making this action here trigger, but not actually do anything
+        if (meta.linkState <= 0){ 
+            //set the src mac address as the previous dst
+            hdr.ethernet.srcAddr = hdr.ethernet.dstAddr;
 
-        //set the src mac address as the previous dst
-        hdr.ethernet.srcAddr = hdr.ethernet.dstAddr;
+            //set the destination mac address 
+            hdr.ethernet.dstAddr = dstAddr;
 
-       //set the destination mac address 
-        hdr.ethernet.dstAddr = dstAddr;
+            
+            
+            //set the output port 
+            standard_metadata.egress_spec = port;
+        
 
-        //set the output port 
-        standard_metadata.egress_spec = port;
-
-        //decrease ttl by 1
-        hdr.ipv4.ttl = hdr.ipv4.ttl - 1;
-
+            //decrease ttl by 1
+            hdr.ipv4.ttl = hdr.ipv4.ttl - 1;
+        }
     }
 
-   table ecmp_group_to_nhop {
+    table ecmp_group_to_nhop {
         key = {
             meta.ecmp_group_id: exact;
             meta.ecmp_hash: exact;
@@ -276,6 +369,7 @@ control MyIngress(inout headers hdr,
 
         l2_forward.apply(); 
 
+<<<<<<< HEAD
         //Apply ECMP if valid
 	if (hdr.ipv4.isValid()){
          
@@ -283,6 +377,9 @@ control MyIngress(inout headers hdr,
            // because bronze traffic needs very large datarate(12M) and we want to utilise all the links as           //each link has a bandwith of < 12 Mbps at the switch egress. Hence, we extended the flowlet               // switching to near packet switching (inter packet gap <  flowlet timeout) for bronze traffic             //within a flow as packet reordering does not matter for our network.
            // TOS = 32 corresponds to DSCP = 8 (bronze traffic)
            if(hdr.ipv4.dscp == 8){
+=======
+	    if (hdr.ipv4.isValid()){
+>>>>>>> First Pass attempt at LFA with Siddhants old master as a basis
 
             @atomic {
                 read_flowlet_registers();
@@ -293,6 +390,7 @@ control MyIngress(inout headers hdr,
                     update_flowlet_id();
                 }
             }
+<<<<<<< HEAD
 	    
 	    //Apply the ecmp group next hop for bronze ( per packet)
            switch (ipv4_lpm.apply().action_run){
@@ -305,6 +403,20 @@ control MyIngress(inout headers hdr,
             else {
 
             //Apply the ecmp normally per flow for silver (TOS =64) and gold (TOS = 128) traffic classes
+=======
+	    //********************** ADD FOR LFA********************
+        //Since we already have a next hop routine, I am injecting code into that action which is triggered only by the Linkstate being down.
+        //The Linkstate update call is done here and then it should just trigger in that action. If that fails, we may have to add an action in the switch just for next hop.
+        dst_index.apply(); //This checks if the link to the nextHop is up
+
+        if (meta.linkState > 0){ //if not, then it updates into meta.nextHop the LFA. That then gets triggered in set_nhop action
+                read_alternativePort();
+                rewrite_mac.apply();
+        }
+        
+        //********************** ADD FOR LFA********************
+	    //Apply the ecmp group next hop 
+>>>>>>> First Pass attempt at LFA with Siddhants old master as a basis
             switch (ipv4_lpm.apply().action_run){
                 ecmp_group: {
                     ecmp_group_to_nhop.apply();
