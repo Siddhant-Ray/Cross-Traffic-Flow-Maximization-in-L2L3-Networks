@@ -164,7 +164,7 @@ function configure  # routers/p4switches RX
         echo "Configuring \`$container\` using \`$script\`"
         sudo docker cp $full_script $container:/home/
         sudo docker exec -t $container chmod 755 /home/$script
-        sudo docker exec -t $container /home/$script || return $usererror
+        sudo docker exec -t $container /bin/sh /home/$script || return $usererror
     else
         return $ioerror
     fi
