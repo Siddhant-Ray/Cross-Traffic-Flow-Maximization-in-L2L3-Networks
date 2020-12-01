@@ -523,5 +523,5 @@ python3 -i udp.py
 
 **How can I configure feature X from the lecture in FRRouting?**
 
-FRRouting does not support everything you have seen during the lecture, or some features that you have seen in configuration examples for real routers. Check the [FRRouting Documentation](http://docs.frrouting.org/en/latest/index.html) to see which features are available. To safe yourselves some time searching, we collect known limitations below:
-OSPF does not support LFAs (loop-free alternates).
+FRRouting does not support everything you have seen during the lecture, or some features that you have seen in configuration examples for real routers. Check the [FRRouting Documentation](http://docs.frrouting.org/en/latest/index.html) to see which features are available. To save yourselves some time searching, we collect known limitations below:
+- OSPF does not support LFAs (loop-free alternates).
