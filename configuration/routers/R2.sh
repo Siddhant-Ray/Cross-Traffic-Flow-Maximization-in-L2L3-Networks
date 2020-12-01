@@ -57,16 +57,16 @@ tc class add dev port_R1 parent 1: classid 1:1 htb rate 4Mbit ceil 4Mbit burst 1
     ## classes 
 
     # gold
-    tc class add dev port_R1 parent 1:1 classid 1:11 htb quantum 1500 rate 3.9Mbit ceil 4Mbit burst 15k cburst 15K prio 1 
+    tc class add dev port_R1 parent 1:1 classid 1:11 htb rate 3.9Mbit ceil 4Mbit burst 15k cburst 15K prio 1 
 
     # silver
-    tc class add dev port_R1 parent 1:1 classid 1:12 htb quantum 1500 rate 0.04Mbit ceil 4Mbit burst 15k cburst 15K prio 2
+    tc class add dev port_R1 parent 1:1 classid 1:12 htb rate 0.04Mbit ceil 4Mbit burst 15k cburst 15K prio 2
 
     # bronze
-    tc class add dev port_R1 parent 1:1 classid 1:13 htb quantum 1500 rate 0.04Mbit ceil 4Mbit burst 15k cburst 15K prio 3
+    tc class add dev port_R1 parent 1:1 classid 1:13 htb rate 0.04Mbit ceil 4Mbit burst 15k cburst 15K prio 3
 
     # other
-    tc class add dev port_R1 parent 1:1 classid 1:14 htb quantum 1500 rate 0.02Mbit ceil 4Mbit burst 15k cburst 15K prio 4
+    tc class add dev port_R1 parent 1:1 classid 1:14 htb rate 0.02Mbit ceil 4Mbit burst 15k cburst 15K prio 4
 
     ## filters
 
