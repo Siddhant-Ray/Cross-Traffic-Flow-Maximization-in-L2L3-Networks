@@ -500,23 +500,24 @@ You can use `ping -Q 0x80`, this should work just fine.
 
 **I can't reach the expected bandwidth with `iperf3` and UDP traffic.**
 
-This is the expected behavior. The problem with `iperf3` is that it sends sequences of bursts of UDP packets, instead of sending UDP packets constantly. Because of that, the queues used in the devices will quickly become full upon a burst of UDP packets, and many packet will then be dropped. 
-If you want to measure the available bandwidth with UDP traffic, we provide the `upd.py` script that is available on every host in the `/home` directory. 
-To use it, you must first run it on the server side, and indicate as parameter the source IP of the UDP flow as well as the destination port.
-
-```
-python3 -i udp.py
->>> recv_udp_flow("1.0.0.1", 5001)
-```
-
-On the source side, you can start the flow with the following command.
+This is the expected behavior. The problem with `iperf3` is that it sends sequences of bursts of UDP packets, instead of sending UDP packets constantly. Because of that, the queues used in the devices will quickly become full upon a burst of UDP packets, and many packets will then be dropped. 
+If you want to measure the available bandwidth with UDP traffic, we provide the `udp.py` script that is available on every host in the `/home` directory.
+You can start a UDP flow sending 4Mbps during 5sec with the following command.
 
 ```
 python3 -i udp.py
 >>> send_udp_flow("2.0.0.1", rate="4M", duration=5, packet_size=1500, batch_size=1)
 ```
 
-This will start a 4Mbps flow during 5sec. Packets will have a size 1500 bytes, and will be send one by one (batch_size=1). 
+Here, the packets will have a size of 1500 bytes, and will be sent one by one (batch_size=1). 
+If you want to see how many packets arrived, you can run the following command on the destination node, where the first parameter is the source IP and the second parameter is the destination port. 
+
+```
+python3 -i udp.py
+>>> recv_udp_flow("1.0.0.1", 5001)
+```
+
+Then with `ctrl+c` you can see the number of received packets. 
 
 **Iperf3 does not set the TOS field correctly.**
 
