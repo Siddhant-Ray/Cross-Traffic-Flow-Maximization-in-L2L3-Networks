@@ -26,6 +26,7 @@ git clone <THIS-REPO> infrastructure
 - [Overview](#overview)
 - [Configuring the network](#configuring-the-network)
 - [Building the topology and running scenarios](#building-the-topology-and-running-scenarios)
+- [Frequently asked questions (FAQ)](#frequently-asked-questions-faq)
 
 
 ## Overview
@@ -527,3 +528,10 @@ Then with `ctrl+c` you can see the number of received packets.
 python3 -i udp.py
 >>> send_udp_flow("2.0.0.1", rate="4M", duration=5, packet_size=1500, batch_size=1, tos=27)
 ```
+
+```
+
+**How can I configure feature X from the lecture in FRRouting?**
+
+FRRouting does not support everything you have seen during the lecture, or some features that you have seen in configuration examples for real routers. Check the [FRRouting Documentation](http://docs.frrouting.org/en/latest/index.html) to see which features are available. To safe yourselves some time searching, we collect known limitations below:
+OSPF does not support LFAs (loop-free alternates).
