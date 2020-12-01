@@ -23,88 +23,50 @@ EOM
 #
 # Write your configuration below. This script will be executed on the container.
 ###############################################################################
+
 # R2 
 ## add back the mtu field? 
-tc qdisc add dev port_R2 handle 1: root htb default 14
-tc class add dev port_R2 parent 1: classid 1:1 htb rate 6Mbit ceil 6Mbit burst 15k
+tc qdisc add dev port_R2 handle 1: root htb default 14 direct_qlen 1000000
+tc class add dev port_R2 parent 1: classid 1:1 htb rate 6Mbit ceil 6Mbit burst 15k cburst 15k
 
     # gold
-    tc class add dev port_R2 parent 1:1 classid 1:11 htb rate 1Mbit ceil 6Mbit burst 15k cburst 15K prio 1 
+    tc class add dev port_R2 parent 1:1 classid 1:11 htb rate 5.9Mbit ceil 6Mbit burst 15k cburst 15K prio 1 
     tc filter add dev port_R2 parent 1: protocol ip prio 1 u32 match ip protocol 17 0xff match ip tos 128 0xff flowid 1:11
 
     #silver
-    tc class add dev port_R2 parent 1:1 classid 1:12 htb rate 4Mbit ceil 6Mbit burst 15k cburst 15K prio 2
+    tc class add dev port_R2 parent 1:1 classid 1:12 htb rate 0.04Mbit ceil 6Mbit burst 15k cburst 15K prio 2
     tc filter add dev port_R2 parent 1: protocol ip prio 1 u32 match ip protocol 17 0xff match ip tos 64 0xff flowid 1:12
 
     # bronze
-    tc class add dev port_R2 parent 1:1 classid 1:13 htb rate 6Mbit ceil 6Mbit burst 15k cburst 15K prio 3
+    tc class add dev port_R2 parent 1:1 classid 1:13 htb rate 0.04Mbit ceil 6Mbit burst 15k cburst 15K prio 3
     tc filter add dev port_R2 parent 1: protocol ip prio 1 u32 match ip protocol 17 0xff match ip tos 32 0xff flowid 1:13
 
     # other
-    tc class add dev port_R2 parent 1:1 classid 1:14 htb rate 450Kbit ceil 6Mbit burst 15k cburst 15K prio 4
+    tc class add dev port_R2 parent 1:1 classid 1:14 htb rate 0.02Mbit ceil 6Mbit burst 15k cburst 15K prio 4
 
-    tc qdisc add dev port_R2 parent 1:11 handle 10: sfq perturb 10 limit 64 quantum 10000
-    tc qdisc add dev port_R2 parent 1:12 handle 20: sfq perturb 10 limit 64 quantum 10000
-    tc qdisc add dev port_R2 parent 1:13 handle 30: sfq perturb 10 limit 64 quantum 10000
-    tc qdisc add dev port_R2 parent 1:14 handle 40: sfq perturb 10 limit 64 quantum 10000
-
-# R3 
-## add back the mtu field? 
-tc qdisc add dev port_R3 handle 1: root htb default 14
-tc class add dev port_R3 parent 1: classid 1:1 htb rate 4Mbit ceil 4Mbit burst 15k
-
-    ## classes 
-
-    # gold
-    tc class add dev port_R3 parent 1:1 classid 1:11 htb rate 1Mbit ceil 4Mbit burst 15k cburst 15K prio 1 
-
-    # silver
-    tc class add dev port_R3 parent 1:1 classid 1:12 htb rate 4Mbit ceil 4Mbit burst 15k cburst 15K prio 2
-
-    # bronze
-    tc class add dev port_R3 parent 1:1 classid 1:13 htb rate 4Mbit ceil 4Mbit burst 15k cburst 15K prio 3
-
-    # other
-    tc class add dev port_R3 parent 1:1 classid 1:14 htb rate 450Kbit ceil 4Mbit burst 15k cburst 15K prio 4
-
-    ## filters
-
-    # gold
-    tc filter add dev port_R3 parent 1: protocol ip prio 1 u32 match ip protocol 17 0xff match ip tos 128 0xff flowid 1:11
-    
-    # silver
-    tc filter add dev port_R3 parent 1: protocol ip prio 1 u32 match ip protocol 17 0xff match ip tos 64 0xff flowid 1:12
-    
-    # bronze
-    tc filter add dev port_R3 parent 1: protocol ip prio 1 u32 match ip protocol 17 0xff match ip tos 32 0xff flowid 1:13
-
-    ## leaves
-
-    tc qdisc add dev port_R3 parent 1:11 handle 10: sfq perturb 10 limit 64 quantum 10000
-    tc qdisc add dev port_R3 parent 1:12 handle 20: sfq perturb 10 limit 64 quantum 10000
-    tc qdisc add dev port_R3 parent 1:13 handle 30: sfq perturb 10 limit 64 quantum 10000
-    tc qdisc add dev port_R3 parent 1:14 handle 40: sfq perturb 10 limit 64 quantum 10000
-
-
+    tc qdisc add dev port_R2 parent 1:11 handle 10: sfq limit 16256 quantum 1500
+    tc qdisc add dev port_R2 parent 1:12 handle 20: sfq limit 16256 quantum 1500
+    tc qdisc add dev port_R2 parent 1:13 handle 30: sfq limit 16256 quantum 1500
+    tc qdisc add dev port_R2 parent 1:14 handle 40: sfq limit 16256 quantum 1500
 
 # R1 
 ## add back the mtu field? 
-tc qdisc add dev port_R1 handle 1: root htb default 14
-tc class add dev port_R1 parent 1: classid 1:1 htb rate 4Mbit ceil 4Mbit burst 15k
+tc qdisc add dev port_R1 handle 1: root htb default 14 direct_qlen 1000000
+tc class add dev port_R1 parent 1: classid 1:1 htb rate 4Mbit ceil 4Mbit burst 15k cburst 15k
 
     ## classes 
 
     # gold
-    tc class add dev port_R1 parent 1:1 classid 1:11 htb rate 1Mbit ceil 4Mbit burst 15k cburst 15K prio 1 
+    tc class add dev port_R1 parent 1:1 classid 1:11 htb quantum 1500 rate 3.9Mbit ceil 4Mbit burst 15k cburst 15K prio 1 
 
     # silver
-    tc class add dev port_R1 parent 1:1 classid 1:12 htb rate 4Mbit ceil 4Mbit burst 15k cburst 15K prio 2
+    tc class add dev port_R1 parent 1:1 classid 1:12 htb quantum 1500 rate 0.04Mbit ceil 4Mbit burst 15k cburst 15K prio 2
 
     # bronze
-    tc class add dev port_R1 parent 1:1 classid 1:13 htb rate 4Mbit ceil 4Mbit burst 15k cburst 15K prio 3
+    tc class add dev port_R1 parent 1:1 classid 1:13 htb quantum 1500 rate 0.04Mbit ceil 4Mbit burst 15k cburst 15K prio 3
 
     # other
-    tc class add dev port_R1 parent 1:1 classid 1:14 htb rate 450Kbit ceil 4Mbit burst 15k cburst 15K prio 4
+    tc class add dev port_R1 parent 1:1 classid 1:14 htb quantum 1500 rate 0.02Mbit ceil 4Mbit burst 15k cburst 15K prio 4
 
     ## filters
 
@@ -119,56 +81,95 @@ tc class add dev port_R1 parent 1: classid 1:1 htb rate 4Mbit ceil 4Mbit burst 1
 
     ## leaves
 
-    tc qdisc add dev port_R1 parent 1:11 handle 10: sfq perturb 10 limit 64 quantum 10000
-    tc qdisc add dev port_R1 parent 1:12 handle 20: sfq perturb 10 limit 64 quantum 10000
-    tc qdisc add dev port_R1 parent 1:13 handle 30: sfq perturb 10 limit 64 quantum 10000
-    tc qdisc add dev port_R1 parent 1:14 handle 40: sfq perturb 10 limit 64 quantum 10000
+    tc qdisc add dev port_R1 parent 1:11 handle 10: sfq limit 16256 quantum 1500
+    tc qdisc add dev port_R1 parent 1:12 handle 20: sfq limit 16256 quantum 1500
+    tc qdisc add dev port_R1 parent 1:13 handle 30: sfq limit 16256 quantum 1500
+    tc qdisc add dev port_R1 parent 1:14 handle 40: sfq limit 16256 quantum 1500
 
 
-# S6
+
+# R3 
 ## add back the mtu field? 
-tc qdisc add dev port_S6 handle 1: root htb default 14
-tc class add dev port_S6 parent 1: classid 1:1 htb rate 6Mbit ceil 6Mbit burst 15k
-
-    # gold
-    tc class add dev port_S6 parent 1:1 classid 1:11 htb rate 1Mbit ceil 6Mbit burst 15k cburst 15K prio 1 
-    tc filter add dev port_S6 parent 1: protocol ip prio 1 u32 match ip protocol 17 0xff match ip tos 128 0xff flowid 1:11
-
-    #silver
-    tc class add dev port_S6 parent 1:1 classid 1:12 htb rate 4Mbit ceil 6Mbit burst 15k cburst 15K prio 2
-    tc filter add dev port_S6 parent 1: protocol ip prio 1 u32 match ip protocol 17 0xff match ip tos 64 0xff flowid 1:12
-
-    # bronze
-    tc class add dev port_S6 parent 1:1 classid 1:13 htb rate 6Mbit ceil 6Mbit burst 15k cburst 15K prio 3
-    tc filter add dev port_S6 parent 1: protocol ip prio 1 u32 match ip protocol 17 0xff match ip tos 32 0xff flowid 1:13
-
-    # other
-    tc class add dev port_S6 parent 1:1 classid 1:14 htb rate 450Kbit ceil 6Mbit burst 15k cburst 15K prio 4
-
-    tc qdisc add dev port_S6 parent 1:11 handle 10: sfq perturb 10 limit 64 quantum 10000
-    tc qdisc add dev port_S6 parent 1:12 handle 20: sfq perturb 10 limit 64 quantum 10000
-    tc qdisc add dev port_S6 parent 1:13 handle 30: sfq perturb 10 limit 64 quantum 10000
-    tc qdisc add dev port_S6 parent 1:14 handle 40: sfq perturb 10 limit 64 quantum 10000
-
-
-# S5
-## add back the mtu field? 
-tc qdisc add dev port_S5 handle 1: root htb default 14
-tc class add dev port_S5 parent 1: classid 1:1 htb rate 4Mbit ceil 4Mbit burst 15k
+tc qdisc add dev port_R3 handle 1: root htb default 14 direct_qlen 1000000
+tc class add dev port_R3 parent 1: classid 1:1 htb rate 4Mbit ceil 4Mbit burst 15k cburst 15k
 
     ## classes 
 
     # gold
-    tc class add dev port_S5 parent 1:1 classid 1:11 htb rate 1Mbit ceil 4Mbit burst 15k cburst 15K prio 1 
+    tc class add dev port_R3 parent 1:1 classid 1:11 htb rate 3.9Mbit ceil 4Mbit burst 15k cburst 15K prio 1 
 
     # silver
-    tc class add dev port_S5 parent 1:1 classid 1:12 htb rate 4Mbit ceil 4Mbit burst 15k cburst 15K prio 2
+    tc class add dev port_R3 parent 1:1 classid 1:12 htb rate 0.04Mbit ceil 4Mbit burst 15k cburst 15K prio 2
 
     # bronze
-    tc class add dev port_S5 parent 1:1 classid 1:13 htb rate 4Mbit ceil 4Mbit burst 15k cburst 15K prio 3
+    tc class add dev port_R3 parent 1:1 classid 1:13 htb rate 0.04Mbit ceil 4Mbit burst 15k cburst 15K prio 3
 
     # other
-    tc class add dev port_S5 parent 1:1 classid 1:14 htb rate 450Kbit ceil 4Mbit burst 15k cburst 15K prio 4
+    tc class add dev port_R3 parent 1:1 classid 1:14 htb rate 0.02Mbit ceil 4Mbit burst 15k cburst 15K prio 4
+
+    ## filters
+
+    # gold
+    tc filter add dev port_R3 parent 1: protocol ip prio 1 u32 match ip protocol 17 0xff match ip tos 128 0xff flowid 1:11
+    
+    # silver
+    tc filter add dev port_R3 parent 1: protocol ip prio 1 u32 match ip protocol 17 0xff match ip tos 64 0xff flowid 1:12
+    
+    # bronze
+    tc filter add dev port_R3 parent 1: protocol ip prio 1 u32 match ip protocol 17 0xff match ip tos 32 0xff flowid 1:13
+
+    ## leaves
+
+    tc qdisc add dev port_R3 parent 1:11 handle 10: sfq limit 16256 quantum 1500
+    tc qdisc add dev port_R3 parent 1:12 handle 20: sfq limit 16256 quantum 1500
+    tc qdisc add dev port_R3 parent 1:13 handle 30: sfq limit 16256 quantum 1500
+    tc qdisc add dev port_R3 parent 1:14 handle 40: sfq limit 16256 quantum 1500
+
+
+# S6
+## add back the mtu field? 
+tc qdisc add dev port_S6 handle 1: root htb default 14 direct_qlen 1000000
+tc class add dev port_S6 parent 1: classid 1:1 htb rate 6Mbit ceil 6Mbit burst 15k cburst 15k
+
+    # gold
+    tc class add dev port_S6 parent 1:1 classid 1:11 htb rate 5.9Mbit ceil 6Mbit burst 15k cburst 15K prio 1 
+    tc filter add dev port_S6 parent 1: protocol ip prio 1 u32 match ip protocol 17 0xff match ip tos 128 0xff flowid 1:11
+
+    #silver
+    tc class add dev port_S6 parent 1:1 classid 1:12 htb rate 0.04Mbit ceil 6Mbit burst 15k cburst 15K prio 2
+    tc filter add dev port_S6 parent 1: protocol ip prio 1 u32 match ip protocol 17 0xff match ip tos 64 0xff flowid 1:12
+
+    # bronze
+    tc class add dev port_S6 parent 1:1 classid 1:13 htb rate 0.04Mbit ceil 6Mbit burst 15k cburst 15K prio 3
+    tc filter add dev port_S6 parent 1: protocol ip prio 1 u32 match ip protocol 17 0xff match ip tos 32 0xff flowid 1:13
+
+    # other
+    tc class add dev port_S6 parent 1:1 classid 1:14 htb rate 0.02Mbit ceil 6Mbit burst 15k cburst 15K prio 4
+
+    tc qdisc add dev port_S6 parent 1:11 handle 10: sfq limit 16256 quantum 1500
+    tc qdisc add dev port_S6 parent 1:12 handle 20: sfq limit 16256 quantum 1500
+    tc qdisc add dev port_S6 parent 1:13 handle 30: sfq limit 16256 quantum 1500
+    tc qdisc add dev port_S6 parent 1:14 handle 40: sfq limit 16256 quantum 1500
+
+
+# S5
+## add back the mtu field? 
+tc qdisc add dev port_S5 handle 1: root htb default 14 direct_qlen 1000000
+tc class add dev port_S5 parent 1: classid 1:1 htb rate 4Mbit ceil 4Mbit burst 15k cburst 15k
+
+    ## classes 
+
+    # gold
+    tc class add dev port_S5 parent 1:1 classid 1:11 htb rate 3.9Mbit ceil 4Mbit burst 15k cburst 15K prio 1 
+
+    # silver
+    tc class add dev port_S5 parent 1:1 classid 1:12 htb rate 0.04Mbit ceil 4Mbit burst 15k cburst 15K prio 2
+
+    # bronze
+    tc class add dev port_S5 parent 1:1 classid 1:13 htb rate 0.04Mbit ceil 4Mbit burst 15k cburst 15K prio 3
+
+    # other
+    tc class add dev port_S5 parent 1:1 classid 1:14 htb rate 0.02Mbit ceil 4Mbit burst 15k cburst 15K prio 4
 
     ## filters
 
@@ -183,32 +184,32 @@ tc class add dev port_S5 parent 1: classid 1:1 htb rate 4Mbit ceil 4Mbit burst 1
 
     ## leaves
 
-    tc qdisc add dev port_S5 parent 1:11 handle 10: sfq perturb 10 limit 64 quantum 10000
-    tc qdisc add dev port_S5 parent 1:12 handle 20: sfq perturb 10 limit 64 quantum 10000
-    tc qdisc add dev port_S5 parent 1:13 handle 30: sfq perturb 10 limit 64 quantum 10000
-    tc qdisc add dev port_S5 parent 1:14 handle 40: sfq perturb 10 limit 64 quantum 10000
+    tc qdisc add dev port_S5 parent 1:11 handle 10: sfq limit 16256 quantum 1500
+    tc qdisc add dev port_S5 parent 1:12 handle 20: sfq limit 16256 quantum 1500
+    tc qdisc add dev port_S5 parent 1:13 handle 30: sfq limit 16256 quantum 1500
+    tc qdisc add dev port_S5 parent 1:14 handle 40: sfq limit 16256 quantum 1500
 
 
 
 
 # S1
 ## add back the mtu field? 
-tc qdisc add dev port_S1 handle 1: root htb default 14
-tc class add dev port_S1 parent 1: classid 1:1 htb rate 4Mbit ceil 4Mbit burst 15k
+tc qdisc add dev port_S1 handle 1: root htb default 14 direct_qlen 1000000
+tc class add dev port_S1 parent 1: classid 1:1 htb rate 4Mbit ceil 4Mbit burst 15k cburst 15k
 
     ## classes 
 
     # gold
-    tc class add dev port_S1 parent 1:1 classid 1:11 htb rate 1Mbit ceil 4Mbit burst 15k cburst 15K prio 1 
+    tc class add dev port_S1 parent 1:1 classid 1:11 htb rate 3.9Mbit ceil 4Mbit burst 15k cburst 15K prio 1 
 
     # silver
-    tc class add dev port_S1 parent 1:1 classid 1:12 htb rate 4Mbit ceil 4Mbit burst 15k cburst 15K prio 2
+    tc class add dev port_S1 parent 1:1 classid 1:12 htb rate 0.04Mbit ceil 4Mbit burst 15k cburst 15K prio 2
 
     # bronze
-    tc class add dev port_S1 parent 1:1 classid 1:13 htb rate 4Mbit ceil 4Mbit burst 15k cburst 15K prio 3
+    tc class add dev port_S1 parent 1:1 classid 1:13 htb rate 0.04Mbit ceil 4Mbit burst 15k cburst 15K prio 3
 
     # other
-    tc class add dev port_S1 parent 1:1 classid 1:14 htb rate 450Kbit ceil 4Mbit burst 15k cburst 15K prio 4
+    tc class add dev port_S1 parent 1:1 classid 1:14 htb rate 0.02Mbit ceil 4Mbit burst 15k cburst 15K prio 4
 
     ## filters
 
@@ -223,8 +224,7 @@ tc class add dev port_S1 parent 1: classid 1:1 htb rate 4Mbit ceil 4Mbit burst 1
 
     ## leaves
 
-    tc qdisc add dev port_S1 parent 1:11 handle 10: sfq perturb 10 limit 64 quantum 10000
-    tc qdisc add dev port_S1 parent 1:12 handle 20: sfq perturb 10 limit 64 quantum 10000
-    tc qdisc add dev port_S1 parent 1:13 handle 30: sfq perturb 10 limit 64 quantum 10000
-    tc qdisc add dev port_S1 parent 1:14 handle 40: sfq perturb 10 limit 64 quantum 10000
-
+    tc qdisc add dev port_S1 parent 1:11 handle 10: sfq limit 16256 quantum 1500
+    tc qdisc add dev port_S1 parent 1:12 handle 20: sfq limit 16256 quantum 1500
+    tc qdisc add dev port_S1 parent 1:13 handle 30: sfq limit 16256 quantum 1500
+    tc qdisc add dev port_S1 parent 1:14 handle 40: sfq limit 16256 quantum 1500

@@ -15,6 +15,7 @@ ls
 *.db
 
 clean_tc.sh
+commands.txt
 
 # Mini-internet files
 build/topo/router_config.txt

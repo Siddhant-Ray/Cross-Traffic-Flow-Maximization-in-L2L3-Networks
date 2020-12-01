@@ -14,81 +14,46 @@ set -eu  # Exit on error (-e), treat unset variables as errors (-u).
 # tc -s -d -p qdisc show dev
 
 # R1 
-## add back the mtu field? 
-tc qdisc add dev port_R1 handle 1: root htb default 14
-tc class add dev port_R1 parent 1: classid 1:1 htb rate 6Mbit ceil 6Mbit burst 15k
+tc qdisc add dev port_R1 handle 1: root htb default 1 direct_qlen 1000000
+    tc class add dev port_R1 parent 1: classid 1:1 htb rate 6Mbit ceil 6Mbit burst 15k cburst 15K
+        # not changing the perturb as chance that we have a collision is quite low and the documentation says
+        # perturbing might cause losses.
 
-    # gold
-    tc class add dev port_R1 parent 1:1 classid 1:11 htb rate 1Mbit ceil 6Mbit burst 15k cburst 15K prio 1 
-    tc filter add dev port_R1 parent 1: protocol ip prio 1 u32 match ip protocol 17 0xff match ip tos 128 0xff flowid 1:11
+        # increasing the limit of a single queue to a very high value (although it seems that depth is responsible to
+        # to limit the packets per flow and can only be lowered)
 
-    #silver
-    tc class add dev port_R1 parent 1:1 classid 1:12 htb rate 4Mbit ceil 6Mbit burst 15k cburst 15K prio 2
-    tc filter add dev port_R1 parent 1: protocol ip prio 1 u32 match ip protocol 17 0xff match ip tos 64 0xff flowid 1:12
+        # setting quantum to the MTU which is advised in the documentation 
 
-    # bronze
-    tc class add dev port_R1 parent 1:1 classid 1:13 htb rate 6Mbit ceil 6Mbit burst 15k cburst 15K prio 3
-    tc filter add dev port_R1 parent 1: protocol ip prio 1 u32 match ip protocol 17 0xff match ip tos 32 0xff flowid 1:13
-
-    # other
-    tc class add dev port_R1 parent 1:1 classid 1:14 htb rate 450Kbit ceil 6Mbit burst 15k cburst 15K prio 4
-
-    tc qdisc add dev port_R1 parent 1:11 handle 10: sfq perturb 10 limit 64 quantum 10000
-    tc qdisc add dev port_R1 parent 1:12 handle 20: sfq perturb 10 limit 64 quantum 10000
-    tc qdisc add dev port_R1 parent 1:13 handle 30: sfq perturb 10 limit 64 quantum 10000
-    tc qdisc add dev port_R1 parent 1:14 handle 40: sfq perturb 10 limit 64 quantum 10000
+        tc qdisc add dev port_R1 parent 1:1 handle 10: sfq limit 16256 quantum 1500
 
 
 
 
+# R4 
+tc qdisc add dev port_R4 handle 1: root htb default 1 direct_qlen 1000000
+    tc class add dev port_R4 parent 1: classid 1:1 htb rate 4Mbit ceil 4Mbit burst 15k cburst 15K
+        # not changing the perturb as chance that we have a collision is quite low and the documentation says
+        # perturbing might cause losses.
+
+        # increasing the limit of a single queue to a very high value (although it seems that depth is responsible to
+        # to limit the packets per flow and can only be lowered)
+
+        # setting quantum to the MTU which is advised in the documentation 
+
+        tc qdisc add dev port_R4 parent 1:1 handle 10: sfq limit 16256 quantum 1500
 
 
-# R4
-## add back the mtu field? 
-tc qdisc add dev port_R4 handle 1: root htb default 14
-tc class add dev port_R4 parent 1: classid 1:1 htb rate 4Mbit ceil 4Mbit burst 15k
 
-    # gold
-    tc class add dev port_R4 parent 1:1 classid 1:11 htb rate 1Mbit ceil 4Mbit burst 15k cburst 15K prio 1 
-    tc filter add dev port_R4 parent 1: protocol ip prio 1 u32 match ip protocol 17 0xff match ip tos 128 0xff flowid 1:11
 
-    #silver
-    tc class add dev port_R4 parent 1:1 classid 1:12 htb rate 4Mbit ceil 4Mbit burst 15k cburst 15K prio 2
-    tc filter add dev port_R4 parent 1: protocol ip prio 1 u32 match ip protocol 17 0xff match ip tos 64 0xff flowid 1:12
+# S6 
+tc qdisc add dev port_S6 handle 1: root htb default 1 direct_qlen 1000000
+    tc class add dev port_S6 parent 1: classid 1:1 htb rate 6Mbit ceil 6Mbit burst 15k cburst 15K
+        # not changing the perturb as chance that we have a collision is quite low and the documentation says
+        # perturbing might cause losses.
 
-    # bronze
-    tc class add dev port_R4 parent 1:1 classid 1:13 htb rate 4Mbit ceil 4Mbit burst 15k cburst 15K prio 3
-    tc filter add dev port_R4 parent 1: protocol ip prio 1 u32 match ip protocol 17 0xff match ip tos 32 0xff flowid 1:13
+        # increasing the limit of a single queue to a very high value (although it seems that depth is responsible to
+        # to limit the packets per flow and can only be lowered)
 
-    # other
-    tc class add dev port_R4 parent 1:1 classid 1:14 htb rate 450Kbit ceil 4Mbit burst 15k cburst 15K prio 4
+        # setting quantum to the MTU which is advised in the documentation 
 
-    tc qdisc add dev port_R4 parent 1:11 handle 10: sfq perturb 10 limit 64 quantum 10000
-    tc qdisc add dev port_R4 parent 1:12 handle 20: sfq perturb 10 limit 64 quantum 10000
-    tc qdisc add dev port_R4 parent 1:13 handle 30: sfq perturb 10 limit 64 quantum 10000
-    tc qdisc add dev port_R4 parent 1:14 handle 40: sfq perturb 10 limit 64 quantum 10000
-
-# S6
-## add back the mtu field? 
-tc qdisc add dev port_S6 handle 1: root htb default 14
-tc class add dev port_S6 parent 1: classid 1:1 htb rate 6Mbit ceil 6Mbit burst 15k
-
-    # gold
-    tc class add dev port_S6 parent 1:1 classid 1:11 htb rate 1Mbit ceil 6Mbit burst 15k cburst 15K prio 1 
-    tc filter add dev port_S6 parent 1: protocol ip prio 1 u32 match ip protocol 17 0xff match ip tos 128 0xff flowid 1:11
-
-    #silver
-    tc class add dev port_S6 parent 1:1 classid 1:12 htb rate 4Mbit ceil 6Mbit burst 15k cburst 15K prio 2
-    tc filter add dev port_S6 parent 1: protocol ip prio 1 u32 match ip protocol 17 0xff match ip tos 64 0xff flowid 1:12
-
-    # bronze
-    tc class add dev port_S6 parent 1:1 classid 1:13 htb rate 6Mbit ceil 6Mbit burst 15k cburst 15K prio 3
-    tc filter add dev port_S6 parent 1: protocol ip prio 1 u32 match ip protocol 17 0xff match ip tos 32 0xff flowid 1:13
-
-    # other
-    tc class add dev port_S6 parent 1:1 classid 1:14 htb rate 450Kbit ceil 6Mbit burst 15k cburst 15K prio 4
-
-    tc qdisc add dev port_S6 parent 1:11 handle 10: sfq perturb 10 limit 64 quantum 10000
-    tc qdisc add dev port_S6 parent 1:12 handle 20: sfq perturb 10 limit 64 quantum 10000
-    tc qdisc add dev port_S6 parent 1:13 handle 30: sfq perturb 10 limit 64 quantum 10000
-    tc qdisc add dev port_S6 parent 1:14 handle 40: sfq perturb 10 limit 64 quantum 10000
+        tc qdisc add dev port_S6 parent 1:1 handle 10: sfq limit 16256 quantum 1500
