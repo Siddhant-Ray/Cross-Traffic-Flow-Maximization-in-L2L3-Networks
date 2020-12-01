@@ -500,7 +500,7 @@ You can use `ping -Q 0x80`, this should work just fine.
 
 **I can't reach the expected bandwidth with `iperf3` and UDP traffic.**
 
-This is the expected behavior. The problem with `iperf3` is that it sends sequences of bursts of UDP packets, instead of sending UDP packets constantly. Because of that, the queues used in the devices will quickly become full upon a burst of UDP packets, and many packet will then be dropped. 
+This is the expected behavior. The problem with `iperf3` is that it sends sequences of bursts of UDP packets, instead of sending UDP packets constantly. Because of that, the queues used in the devices will quickly become full upon a burst of UDP packets, and many packets will then be dropped. 
 If you want to measure the available bandwidth with UDP traffic, we provide the `upd.py` script that is available on every host in the `/home` directory. 
 To use it, you must first run it on the server side, and indicate as parameter the source IP of the UDP flow as well as the destination port.
 
@@ -516,11 +516,11 @@ python3 -i udp.py
 >>> send_udp_flow("2.0.0.1", rate="4M", duration=5, packet_size=1500, batch_size=1)
 ```
 
-This will start a 4Mbps flow during 5sec. Packets will have a size 1500 bytes, and will be send one by one (batch_size=1). 
+This will start a 4Mbps flow during 5sec. Packets will have a size of 1500 bytes, and will be sent one by one (batch_size=1). 
 
 **Iperf3 does not set the TOS field correctly.**
 
-`iperf3` can only use TOS value that are multiple of 4 (with the option `-S` or `--tos`). If you want to use TOS value that are not multiple of 4, you can use the `udp.py` script that we provide with the `tos` option on the sender side. For instance if you want to use a TOS of 27:
+`iperf3` can only use TOS values that are multiple of 4 (with the option `-S` or `--tos`). If you want to use a TOS value that is not multiple of 4, you can use the `udp.py` script that we provide with the `tos` option on the sender side. For instance if you want to use a TOS of 27:
 
 ```
 python3 -i udp.py
