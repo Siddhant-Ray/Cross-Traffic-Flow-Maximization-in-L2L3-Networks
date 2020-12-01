@@ -521,7 +521,7 @@ Then with `ctrl+c` you can see the number of received packets.
 
 **Iperf3 does not set the TOS field correctly.**
 
-`iperf3` can only use TOS value that are multiple of 4 (with the option `-S` or `--tos`). If you want to use TOS value that are not multiple of 4, you can use the `udp.py` script that we provide with the `tos` option on the sender side. For instance if you want to use a TOS of 27:
+`iperf3` can only use TOS values that are multiple of 4 (with the option `-S` or `--tos`). If you want to use a TOS value that is not multiple of 4, you can use the `udp.py` script that we provide with the `tos` option on the sender side. For instance if you want to use a TOS of 27:
 
 ```
 python3 -i udp.py
