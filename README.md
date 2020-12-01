@@ -95,16 +95,7 @@ The `default.traffic` scenario is defined as follows:
 
 -   Flows belong to different classes: gold, silver, and bronze.
     Intuitively, gold traffic matters most, followed by silver, then bronze.
-    Hosts will indicate the class of their traffic using the `TOS` field in the IP header. The classes also have different numbers of flows, traffic volumes (per flow) and packet sizes.
-
-    | Class   | TOS | Flows | Volume (Mbps) | Packet Size (Byte) |
-    |---------|----:|------:|--------------:|-------------------:|
-    | Gold    | 128 |     1 |             1 |               1500 |
-    | Silver  |  64 |     2 |             4 |               1500 |
-    | Bronze  |  32 |     3 |            12 |               1500 |
-
-    > Think of the classes as different types of traffic. For example, gold traffic might be VOIP traffic: a relatively low volume of packets that must not get lost, as the call is real-time.
-
+    Hosts will indicate the class of their traffic using the `TOS` field in the IP header: 128 for gold, 64 for silver, 32 for bronze.
 
 There are other traffic scenarios to test your configuration.
 They do not necessarily follow the specification above, but might be helpful to test your configuration.
