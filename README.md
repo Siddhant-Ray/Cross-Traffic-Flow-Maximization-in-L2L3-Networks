@@ -466,3 +466,63 @@ If you do not specify a traffic scenario, the `default` scenario is used.
 ### `./cli.sh run-scenario [t] [f]`
 
 Runs traffic and failure scenarios. The arguments are the same as for `run-pipeline`.
+
+## Frequently Asked Questions (FAQ)
+
+**Which links can fail in the network?**
+
+All the links but the ones between the switches and the hosts. 
+
+**Are we allowed to use `ovs-vsctl` to check if a link is up or down?**
+
+No. We give more detail in this [section](#controller) of the README.
+
+**Are we allowed to configure the hosts?**
+
+No. And if you do so, your host configuration will not be used when we will run your solution on our server. You can only configure your network via the configuration files available in the `configuration` directory. 
+
+**Does the packet reception rate (PRR) take into account reordering?**
+
+No, it does not. 
+
+**The controller returns an error when I want to use P4 digests.**
+
+This is because the optimized switch is compiled with the digest capability disabled. 
+Fortunately, you can still use `copy_to_cpu` to send message from the data plane to the control plane. We show how to use `copy_to_cpu` in this [example](https://github.com/nsg-ethz/p4-learning/tree/master/examples/copy_to_cpu). 
+
+**Can you install iperf on the hosts?**
+
+You should use `iperf3` instead of `iperf`, it is installed on all the hosts as well as the routers and switches. 
+
+**A ping with TOS set to 128 (`ping -Q 128 1.0.0.2`) returns an error.**
+
+You can use `ping -Q 0x80`, this should work just fine. 
+
+**I can't reach the expected bandwidth with `iperf3` and UDP traffic.**
+
+This is the expected behavior. The problem with `iperf3` is that it sends sequences of bursts of UDP packets, instead of sending UDP packets constantly. Because of that, the queues used in the devices will quickly become full upon a burst of UDP packets, and many packet will then be dropped. 
+If you want to measure the available bandwidth with UDP traffic, we provide the `upd.py` script that is available on every host in the `/home` directory. 
+To use it, you must first run it on the server side, and indicate as parameter the source IP of the UDP flow as well as the destination port.
+
+```
+python3 -i udp.py
+>>> recv_udp_flow("1.0.0.1", 5001)
+```
+
+On the source side, you can start the flow with the following command.
+
+```
+python3 -i udp.py
+>>> send_udp_flow("2.0.0.1", rate="4M", duration=5, packet_size=1500, batch_size=1)
+```
+
+This will start a 4Mbps flow during 5sec. Packets will have a size 1500 bytes, and will be send one by one (batch_size=1). 
+
+**Iperf3 does not set the TOS field correctly.**
+
+`iperf3` can only use TOS value that are multiple of 4 (with the option `-S` or `--tos`). If you want to use TOS value that are not multiple of 4, you can use the `udp.py` script that we provide with the `tos` option on the sender side. For instance if you want to use a TOS of 27:
+
+```
+python3 -i udp.py
+>>> send_udp_flow("2.0.0.1", rate="4M", duration=5, packet_size=1500, batch_size=1, tos=27)
+```
