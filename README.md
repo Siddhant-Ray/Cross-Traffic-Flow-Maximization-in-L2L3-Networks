@@ -520,7 +520,6 @@ python3 -i udp.py
 >>> send_udp_flow("2.0.0.1", rate="4M", duration=5, packet_size=1500, batch_size=1, tos=27)
 ```
 
-```
 
 **How can I configure feature X from the lecture in FRRouting?**
 
