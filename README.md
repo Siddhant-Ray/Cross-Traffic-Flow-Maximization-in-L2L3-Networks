@@ -529,7 +529,7 @@ python3 -i udp.py
 FRRouting does not support everything you have seen during the lecture, or some features that you have seen in configuration examples for real routers. Check the [FRRouting Documentation](http://docs.frrouting.org/en/latest/index.html) to see which features are available. To safe yourselves some time searching, we collect known limitations below:
 OSPF does not support LFAs (loop-free alternates).
 
-** Why can't I clasisfy packets at switch nodes **
+**Why can't I clasisfy packets at switch nodes**
 
 Switch nodes run `bmv2` (the p4 switch software implementation) which sends and receives packets from the interfaces
 using `libpcap` and uses binds using `raw` sockets and `ETH_P_ALL`. That makes `iptables` not to intercept any packet. Furthermore, and more importantly for us when using the `tc filter` we can not match to `protocol ip` anymore since the packet protocol is unknown by the underlying structures. Thus, to make `tc filter` in our switch interfaces we have to replace:
@@ -540,24 +540,24 @@ Does not work:
 works:
 `tc filter add dev intf parent 1: protocol all prio 1 u32 match ip dsfield 1 0xff flowid 1:10`
 
-** Why I don't get the expected results when using TC even though I think I did it all correct?**
+**Why I don't get the expected results when using TC even though I think I did it all correct?**
 
 When trying to do `tc` it is very important you also rate limit the traffic to the interface maximum, otherwise your priorities, fair queueing, etc wont work. Why so? your device interfaces have “unlimited” bw, we do all the rate limiting in some middle nodes we added. Thus, if you use priorities or Fair queueing packets are dequeued so fast that its like having nothing, therefore you must rate limit at the same time you use priorities, or other things. 
 
 **Important:** if you use `htb` make sure the sum of children `rates` does not exceed the parent `rate` otherwise child nodes will be able to send above the limit. Futhremore, remember that the `rate` is just the guaranteed `rate` for a given class, you can set the sum of rates to be at max the parent `rate` (or link bw) or you can set it to a lower number. This is very important to avoid lower prioity traffic to steal some bandwidth to higher priority traffic classes.
 
-** What I am allowed to send from the switch to the controller and viceversa? **
+**What I am allowed to send from the switch to the controller and viceversa?**
 
 You can send any packet or clone/mirror packets to the controller as much as you want with only one limitation. You are not allowed to buffer normal traffic in the controller and then inject it back to the network. Also you are not allowed to use the controller as a forwarding node. For example forwarding normal traffic like `S1->Controller->S6`. 
 
 You are allowed to inject as many packets (be careful with cpu and bandwidth usage) from the controller to switches. You can use those packets to either `clock` the switches or make switches forward them somewhere. 
 
-** How can I send packets from the switch without being blocked? **
+**How can I send packets from the switch without being blocked?**
 
 To send packets to the controller you can either forward a packet to the cpu port (but then you lose that traffic packet) 
 or you clone a packet. You can find an example here https://github.com/nsg-ethz/p4-learning/tree/master/exercises/04-L2_Learning. You can see that to receive packets we use `scapy` and the `sniff` function https://github.com/nsg-ethz/p4-learning/blob/master/exercises/04-L2_Learning/solution/l2_learning_controller.py#L123. You are free to use that or any other function or python library to get packets from interfaces. However, keep in mind that `sniff` will block your programm execution. You can either listent to multiple interfaces at the same time or you can use `Threads` to deal with all the switches in parallel. 
 
-** How can I get a switch cpu port name ? **
+**How can I get a switch cpu port name ?**
 
 For that use the topology object, you can either use `topo.get_cpu_port_intf(sw_name)` or `topo.get_ctl_cpu_intf(sw_name)`.
 
