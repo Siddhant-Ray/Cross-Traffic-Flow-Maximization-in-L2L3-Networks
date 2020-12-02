@@ -464,36 +464,36 @@ Runs traffic and failure scenarios. The arguments are the same as for `run-pipel
 
 ## Frequently Asked Questions (FAQ)
 
-**Which links can fail in the network?**
+#### Which links can fail in the network?
 
 All the links but the ones between the switches and the hosts. 
 
-**Are we allowed to use `ovs-vsctl` to check if a link is up or down?**
+#### Are we allowed to use `ovs-vsctl` to check if a link is up or down?
 
 No. We give more detail in this [section](#controller) of the README.
 
-**Are we allowed to configure the hosts?**
+#### Are we allowed to configure the hosts?
 
 No. And if you do so, your host configuration will not be used when we will run your solution on our server. You can only configure your network via the configuration files available in the `configuration` directory. 
 
-**Does the packet reception rate (PRR) take into account reordering?**
+#### Does the packet reception rate (PRR) take into account reordering?
 
 No, it does not. 
 
-**The controller returns an error when I want to use P4 digests.**
+#### The controller returns an error when I want to use P4 digests.
 
 This is because the optimized switch is compiled with the digest capability disabled. 
 Fortunately, you can still use `copy_to_cpu` to send message from the data plane to the control plane. We show how to use `copy_to_cpu` in this [example](https://github.com/nsg-ethz/p4-learning/tree/master/examples/copy_to_cpu). 
 
-**Can you install iperf on the hosts?**
+#### Can you install iperf on the hosts?
 
 You should use `iperf3` instead of `iperf`, it is installed on all the hosts as well as the routers and switches. 
 
-**A ping with TOS set to 128 (`ping -Q 128 1.0.0.2`) returns an error.**
+#### A ping with TOS set to 128 (`ping -Q 128 1.0.0.2`) returns an error.
 
 You can use `ping -Q 0x80`, this should work just fine. 
 
-**I can't reach the expected bandwidth with `iperf3` and UDP traffic.**
+#### I can't reach the expected bandwidth with `iperf3` and UDP traffic.
 
 This is the expected behavior. The problem with `iperf3` is that it sends sequences of bursts of UDP packets, instead of sending UDP packets constantly. Because of that, the queues used in the devices will quickly become full upon a burst of UDP packets, and many packets will then be dropped. 
 If you want to measure the available bandwidth with UDP traffic, we provide the `upd.py` script that is available on every host in the `/home` directory.
@@ -515,7 +515,7 @@ python3 -i udp.py
 Then with `ctrl+c` you can see the number of received packets. 
 
 
-**Iperf3 does not set the TOS field correctly.**
+#### Iperf3 does not set the TOS field correctly.
 
 `iperf3` can only use TOS values that are multiple of 4 (with the option `-S` or `--tos`). If you want to use a TOS value that is not multiple of 4, you can use the `udp.py` script that we provide with the `tos` option on the sender side. For instance if you want to use a TOS of 27:
 
@@ -524,12 +524,16 @@ python3 -i udp.py
 >>> send_udp_flow("2.0.0.1", rate="4M", duration=5, packet_size=1500, batch_size=1, tos=27)
 ```
 
-**How can I configure feature X from the lecture in FRRouting?**
+#### How can I configure feature X from the lecture in FRRouting?
 
 FRRouting does not support everything you have seen during the lecture, or some features that you have seen in configuration examples for real routers. Check the [FRRouting Documentation](http://docs.frrouting.org/en/latest/index.html) to see which features are available. To safe yourselves some time searching, we collect known limitations below:
 OSPF does not support LFAs (loop-free alternates).
 
-**Why can't I clasisfy packets at switch nodes**
+#### The routers do not forward MPLS packets although I have configured them to do so.
+
+In the MPLS exercise, we used `0x8848` for the ethertype, which means `MPLS multicast label switched packet`. Actually, you need to use instead the ethertype `0x8847`, which means `MPLS label switched packet`, otherwise the routers will not process the MPLS packets. We have updated the MPLS exercise solution, but make sure to also update your P4 code.
+
+#### Why can't I clasisfy packets at switch nodes
 
 Switch nodes run `bmv2` (the p4 switch software implementation) which sends and receives packets from the interfaces
 using `libpcap` and uses binds using `raw` sockets and `ETH_P_ALL`. That makes `iptables` not to intercept any packet. Furthermore, and more importantly for us when using the `tc filter` we can not match to `protocol ip` anymore since the packet protocol is unknown by the underlying structures. Thus, to make `tc filter` in our switch interfaces we have to replace:
@@ -537,31 +541,31 @@ using `libpcap` and uses binds using `raw` sockets and `ETH_P_ALL`. That makes `
 Does not work:
 `tc filter add dev intf parent 1: protocol ip prio 1 u32 match ip dsfield 1 0xff flowid 1:10`
   
-works:
+Works:
 `tc filter add dev intf parent 1: protocol all prio 1 u32 match ip dsfield 1 0xff flowid 1:10`
 
-**Why I don't get the expected results when using TC even though I think I did it all correct?**
+#### Why I don't get the expected results when using TC even though I think I did it all correct?
 
 When trying to do `tc` it is very important you also rate limit the traffic to the interface maximum, otherwise your priorities, fair queueing, etc wont work. Why so? your device interfaces have “unlimited” bw, we do all the rate limiting in some middle nodes we added. Thus, if you use priorities or Fair queueing packets are dequeued so fast that its like having nothing, therefore you must rate limit at the same time you use priorities, or other things. 
 
 **Important:** if you use `htb` make sure the sum of children `rates` does not exceed the parent `rate` otherwise child nodes will be able to send above the limit. Futhremore, remember that the `rate` is just the guaranteed `rate` for a given class, you can set the sum of rates to be at max the parent `rate` (or link bw) or you can set it to a lower number. This is very important to avoid lower prioity traffic to steal some bandwidth to higher priority traffic classes.
 
-**What I am allowed to send from the switch to the controller and viceversa?**
+#### What I am allowed to send from the switch to the controller and viceversa?
 
 You can send any packet or clone/mirror packets to the controller as much as you want with only one limitation. You are not allowed to buffer normal traffic in the controller and then inject it back to the network. Also you are not allowed to use the controller as a forwarding node. For example forwarding normal traffic like `S1->Controller->S6`. 
 
 You are allowed to inject as many packets (be careful with cpu and bandwidth usage) from the controller to switches. You can use those packets to either `clock` the switches or make switches forward them somewhere. 
 
-**How can I send packets from the switch without being blocked?**
+#### How can I send packets from the switch without being blocked?
 
 To send packets to the controller you can either forward a packet to the cpu port (but then you lose that traffic packet) 
 or you clone a packet. You can find an example here https://github.com/nsg-ethz/p4-learning/tree/master/exercises/04-L2_Learning. You can see that to receive packets we use `scapy` and the `sniff` function https://github.com/nsg-ethz/p4-learning/blob/master/exercises/04-L2_Learning/solution/l2_learning_controller.py#L123. You are free to use that or any other function or python library to get packets from interfaces. However, keep in mind that `sniff` will block your programm execution. You can either listent to multiple interfaces at the same time or you can use `Threads` to deal with all the switches in parallel. 
 
-**How can I get a switch cpu port name ?**
+#### How can I get a switch cpu port name ?
 
 For that use the topology object, you can either use `topo.get_cpu_port_intf(sw_name)` or `topo.get_ctl_cpu_intf(sw_name)`.
 
-** How can I send packets from the controller to the switch ?**
+#### How can I send packets from the controller to the switch ?
 
 To send packets from the controller to the switch you need to `inject` raw packets to the respective switch
 `cpu` port interface. To get the name use the topology object. 
