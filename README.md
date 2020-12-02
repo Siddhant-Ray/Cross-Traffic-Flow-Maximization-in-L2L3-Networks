@@ -529,4 +529,4 @@ FRRouting does not support everything you have seen during the lecture, or some 
 
 **The routers do not forward MPLS packets although I have configured them to do so.**
 
-In the MPLS exercise, we used `0x8848` for the ethertype, which means `MPLS multicast label switched packet`. Actually, you need to use instead the ethertype `0x8847`, which means `MPLS label switched packet`, otherwise the routers will not proces the packet. We have updated the MPLS exercise solution, but make sure to also update your P4 code.
+In the MPLS exercise, we used `0x8848` for the ethertype, which means `MPLS multicast label switched packet`. Actually, you need to use instead the ethertype `0x8847`, which means `MPLS label switched packet`, otherwise the routers will not process the MPLS packets. We have updated the MPLS exercise solution, but make sure to also update your P4 code.
