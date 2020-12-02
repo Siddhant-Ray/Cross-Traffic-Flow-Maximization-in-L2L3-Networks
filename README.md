@@ -26,6 +26,7 @@ git clone <THIS-REPO> infrastructure
 - [Overview](#overview)
 - [Configuring the network](#configuring-the-network)
 - [Building the topology and running scenarios](#building-the-topology-and-running-scenarios)
+- [Frequently asked questions (FAQ)](#frequently-asked-questions-faq)
 
 
 ## Overview
@@ -94,16 +95,7 @@ The `default.traffic` scenario is defined as follows:
 
 -   Flows belong to different classes: gold, silver, and bronze.
     Intuitively, gold traffic matters most, followed by silver, then bronze.
-    Hosts will indicate the class of their traffic using the `TOS` field in the IP header. The classes also have different numbers of flows, traffic volumes (per flow) and packet sizes.
-
-    | Class   | TOS | Flows | Volume (Mbps) | Packet Size (Byte) |
-    |---------|----:|------:|--------------:|-------------------:|
-    | Gold    | 128 |     1 |             1 |               1500 |
-    | Silver  |  64 |     2 |             4 |               1500 |
-    | Bronze  |  32 |     3 |            12 |               1500 |
-
-    > Think of the classes as different types of traffic. For example, gold traffic might be VOIP traffic: a relatively low volume of packets that must not get lost, as the call is real-time.
-
+    Hosts will indicate the class of their traffic using the `TOS` field in the IP header: 128 for gold, 64 for silver, 32 for bronze.
 
 There are other traffic scenarios to test your configuration.
 They do not necessarily follow the specification above, but might be helpful to test your configuration.
@@ -247,6 +239,8 @@ Only requirements from [PyPI][pypi] are allowed, i.e. requirements that you can 
 
 [reqfiles]: https://pip.pypa.io/en/latest/user_guide/#requirements-files
 [pypi]: https://pypi.org
+
+
 
 
 ## Building the topology and running scenarios
@@ -467,6 +461,7 @@ If you do not specify a traffic scenario, the `default` scenario is used.
 
 Runs traffic and failure scenarios. The arguments are the same as for `run-pipeline`.
 
+
 ## Frequently Asked Questions (FAQ)
 
 **Which links can fail in the network?**
@@ -501,7 +496,7 @@ You can use `ping -Q 0x80`, this should work just fine.
 **I can't reach the expected bandwidth with `iperf3` and UDP traffic.**
 
 This is the expected behavior. The problem with `iperf3` is that it sends sequences of bursts of UDP packets, instead of sending UDP packets constantly. Because of that, the queues used in the devices will quickly become full upon a burst of UDP packets, and many packets will then be dropped. 
-If you want to measure the available bandwidth with UDP traffic, we provide the `udp.py` script that is available on every host in the `/home` directory.
+If you want to measure the available bandwidth with UDP traffic, we provide the `upd.py` script that is available on every host in the `/home` directory.
 You can start a UDP flow sending 4Mbps during 5sec with the following command.
 
 ```
@@ -510,7 +505,7 @@ python3 -i udp.py
 ```
 
 Here, the packets will have a size of 1500 bytes, and will be sent one by one (batch_size=1). 
-If you want to see how many packets arrived, you can run the following command on the destination node, where the first parameter is the source IP and the second parameter is the destination port. 
+If you want to see how many packets arrived=, you can run the following command one the destination node, where the first parameter is the source IP and the second parameter is the destination port. 
 
 ```
 python3 -i udp.py
@@ -518,6 +513,7 @@ python3 -i udp.py
 ```
 
 Then with `ctrl+c` you can see the number of received packets. 
+
 
 **Iperf3 does not set the TOS field correctly.**
 
@@ -527,3 +523,49 @@ Then with `ctrl+c` you can see the number of received packets.
 python3 -i udp.py
 >>> send_udp_flow("2.0.0.1", rate="4M", duration=5, packet_size=1500, batch_size=1, tos=27)
 ```
+
+**How can I configure feature X from the lecture in FRRouting?**
+
+FRRouting does not support everything you have seen during the lecture, or some features that you have seen in configuration examples for real routers. Check the [FRRouting Documentation](http://docs.frrouting.org/en/latest/index.html) to see which features are available. To safe yourselves some time searching, we collect known limitations below:
+OSPF does not support LFAs (loop-free alternates).
+
+** Why can't I clasisfy packets at switch nodes **
+
+Switch nodes run `bmv2` (the p4 switch software implementation) which sends and receives packets from the interfaces
+using `libpcap` and uses binds using `raw` sockets and `ETH_P_ALL`. That makes `iptables` not to intercept any packet. Furthermore, and more importantly for us when using the `tc filter` we can not match to `protocol ip` anymore since the packet protocol is unknown by the underlying structures. Thus, to make `tc filter` in our switch interfaces we have to replace:
+
+Does not work:
+`tc filter add dev intf parent 1: protocol ip prio 1 u32 match ip dsfield 1 0xff flowid 1:10`
+  
+works:
+`tc filter add dev intf parent 1: protocol all prio 1 u32 match ip dsfield 1 0xff flowid 1:10`
+
+** Why I don't get the expected results when using TC even though I think I did it all correct?**
+
+When trying to do `tc` it is very important you also rate limit the traffic to the interface maximum, otherwise your priorities, fair queueing, etc wont work. Why so? your device interfaces have “unlimited” bw, we do all the rate limiting in some middle nodes we added. Thus, if you use priorities or Fair queueing packets are dequeued so fast that its like having nothing, therefore you must rate limit at the same time you use priorities, or other things. 
+
+**Important:** if you use `htb` make sure the sum of children `rates` does not exceed the parent `rate` otherwise child nodes will be able to send above the limit. Futhremore, remember that the `rate` is just the guaranteed `rate` for a given class, you can set the sum of rates to be at max the parent `rate` (or link bw) or you can set it to a lower number. This is very important to avoid lower prioity traffic to steal some bandwidth to higher priority traffic classes.
+
+** What I am allowed to send from the switch to the controller and viceversa? **
+
+You can send any packet or clone/mirror packets to the controller as much as you want with only one limitation. You are not allowed to buffer normal traffic in the controller and then inject it back to the network. Also you are not allowed to use the controller as a forwarding node. For example forwarding normal traffic like `S1->Controller->S6`. 
+
+You are allowed to inject as many packets (be careful with cpu and bandwidth usage) from the controller to switches. You can use those packets to either `clock` the switches or make switches forward them somewhere. 
+
+** How can I send packets from the switch without being blocked? **
+
+To send packets to the controller you can either forward a packet to the cpu port (but then you lose that traffic packet) 
+or you clone a packet. You can find an example here https://github.com/nsg-ethz/p4-learning/tree/master/exercises/04-L2_Learning. You can see that to receive packets we use `scapy` and the `sniff` function https://github.com/nsg-ethz/p4-learning/blob/master/exercises/04-L2_Learning/solution/l2_learning_controller.py#L123. You are free to use that or any other function or python library to get packets from interfaces. However, keep in mind that `sniff` will block your programm execution. You can either listent to multiple interfaces at the same time or you can use `Threads` to deal with all the switches in parallel. 
+
+** How can I get a switch cpu port name ? **
+
+For that use the topology object, you can either use `topo.get_cpu_port_intf(sw_name)` or `topo.get_ctl_cpu_intf(sw_name)`.
+
+** How can I send packets from the controller to the switch ?**
+
+To send packets from the controller to the switch you need to `inject` raw packets to the respective switch
+`cpu` port interface. To get the name use the topology object. 
+
+You can send packets using any python tool/library that allows sending `raw` packets. You can use `scapy`, `raw` linux sockets. For simplicity, we recommend
+you to use `scapy` and the `sendp` function (https://0xbharath.github.io/art-of-packet-crafting-with-scapy/scapy/sending_recieving/index.html). However, if you need
+more performance you can use python raw sockets (https://sira.dev/2019/06/24/layer-2-socket-programming.html).

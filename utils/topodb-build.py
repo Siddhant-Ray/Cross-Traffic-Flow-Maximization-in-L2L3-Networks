@@ -220,7 +220,7 @@ class MiniInternetTopoBuilder(object):
                     interfaces_to_node[intf_name] = host_name
 
             if node_type == "switch":
-                interfaces_to_port["switch-cpu"] = intf_index
+                interfaces_to_port[nodes[node]["ctl_cpu_intf"]] = intf_index
 
             nodes[node]["interfaces_to_port"] = interfaces_to_port
             nodes[node]["interfaces_to_node"] = interfaces_to_node
