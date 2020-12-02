@@ -525,3 +525,8 @@ python3 -i udp.py
 
 FRRouting does not support everything you have seen during the lecture, or some features that you have seen in configuration examples for real routers. Check the [FRRouting Documentation](http://docs.frrouting.org/en/latest/index.html) to see which features are available. To save yourselves some time searching, we collect known limitations below:
 - OSPF does not support LFAs (loop-free alternates).
+
+
+**The routers do not forward MPLS packets although I have configured them to do so.**
+
+In the MPLS exercise, we used `0x8848` for the ethertype, which means `MPLS multicast label switched packet`. Actually, you need to use instead the ethertype `0x8847`, which means `MPLS label switched packet`, otherwise the routers will not proces the packet. We have updated the MPLS exercise solution, but make sure to also update your P4 code.
