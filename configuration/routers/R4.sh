@@ -32,7 +32,7 @@ ip ospf dead-interval 4
 ip ospf cost 1
 exit
 
-interace port_S5
+interface port_S5
 ip ospf hello-interval 1
 ip ospf dead-interval 4
 exit
