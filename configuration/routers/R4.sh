@@ -14,6 +14,39 @@ set -eu  # Exit on error (-e), treat unset variables as errors (-u).
 
 vtysh << EOM
 conf t
+
+router ospf 10
+interface port_R1
+ip ospf hello-interval 1
+ip ospf dead-interval 4
+ip ospf cost 3
+exit
+interface port_R2
+ip ospf hello-interval 1
+ip ospf dead-interval 4
+ip ospf cost 2
+exit
+interface port_R3
+ip ospf hello-interval 1
+ip ospf dead-interval 4
+ip ospf cost 1
+exit
+
+interace port_S5
+ip ospf hello-interval 1
+ip ospf dead-interval 4
+exit
+interface port_S6
+ip ospf hello-interval 1
+ip ospf dead-interval 4
+exit
+interface port_S1
+ip ospf hello-interval 1
+ip ospf dead-interval 4
+exit
+
+exit
+
 exit
 EOM
 
