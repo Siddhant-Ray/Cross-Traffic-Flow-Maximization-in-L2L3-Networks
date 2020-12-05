@@ -7,7 +7,11 @@ const bit<16> TYPE_IPV4 = 0x800;
 #define REGISTER_SIZE 8192
 #define TIMESTAMP_WIDTH 48
 #define ID_WIDTH 16
+<<<<<<< HEAD
 #define FLOWLET_TIMEOUT 48w100000 //100ms
+=======
+#define FLOWLET_TIMEOUT_BRONZE 48w200000 //200ms
+>>>>>>> 9c46f3a... Merge load balancing
 
 
 /*************************************************************************
@@ -154,10 +158,18 @@ control MyIngress(inout headers hdr,
 
     register<bit<ID_WIDTH>>(REGISTER_SIZE) flowlet_to_id;
     register<bit<TIMESTAMP_WIDTH>>(REGISTER_SIZE) flowlet_time_stamp;
+<<<<<<< HEAD
+=======
+  
+>>>>>>> 9c46f3a... Merge load balancing
 
     action drop() {
         mark_to_drop(standard_metadata);
     }
+<<<<<<< HEAD
+=======
+    
+>>>>>>> 9c46f3a... Merge load balancing
 
     action read_flowlet_registers(){
 
@@ -247,8 +259,11 @@ control MyIngress(inout headers hdr,
         default_action = drop;
     }
 
+<<<<<<< HEAD
 
 
+=======
+>>>>>>> 9c46f3a... Merge load balancing
     action l2_forward_action(egressSpec_t port) {
         standard_metadata.egress_spec = port;
     }
@@ -276,7 +291,17 @@ control MyIngress(inout headers hdr,
 
         l2_forward.apply(); 
 
+<<<<<<< HEAD
 	if (hdr.ipv4.isValid()){
+=======
+        //Apply ECMP if valid
+	if (hdr.ipv4.isValid()){
+         
+           // Split at per packet basis for bronze traffic over all the equi-cost egress links. This is 
+           // because bronze traffic needs very large datarate(12M) and we want to utilise all the links as           //each link has a bandwith of < 12 Mbps at the switch egress. Hence, we extended the flowlet               // switching to near packet switching (inter packet gap <  flowlet timeout) for bronze traffic             //within a flow as packet reordering does not matter for our network.
+           // TOS = 32 corresponds to DSCP = 8 (bronze traffic)
+           if(hdr.ipv4.dscp == 8){
+>>>>>>> 9c46f3a... Merge load balancing
 
             @atomic {
                 read_flowlet_registers();
@@ -288,7 +313,21 @@ control MyIngress(inout headers hdr,
                 }
             }
 	    
+<<<<<<< HEAD
 	    //Apply the ecmp group next hop 
+=======
+	    //Apply the ecmp group next hop for bronze ( per packet)
+           switch (ipv4_lpm.apply().action_run){
+                ecmp_group: {
+                    ecmp_group_to_nhop.apply();
+                }
+            }
+        }
+
+            else {
+
+            //Apply the ecmp normally per flow for silver (TOS =64) and gold (TOS = 128) traffic classes
+>>>>>>> 9c46f3a... Merge load balancing
             switch (ipv4_lpm.apply().action_run){
                 ecmp_group: {
                     ecmp_group_to_nhop.apply();
