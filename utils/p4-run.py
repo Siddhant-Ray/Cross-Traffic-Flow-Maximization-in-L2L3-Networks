@@ -82,6 +82,8 @@ class AppRunner(object):
         print("Starting P4 switch {}.\n".format(switch_name))
         args = [self.switch_bin]
         for intf_name, port_num in self.topo.get_interfaces_to_port(switch_name).items():
+            if 'cpu' in intf_name:
+                intf_name = "switch-cpu"
             args.extend(["-i", str(port_num)+"@"+intf_name])
 
         shared_base_path = HOSTS_SHARED_PATH

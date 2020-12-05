@@ -138,7 +138,7 @@ function start-switches
 
 function controller
 {
-    if [ $# -ne 1 ]; then
+    if [ $# -lt 1 ]; then
         traffic="default"
     else
         traffic=$1
