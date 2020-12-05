@@ -31,7 +31,7 @@ ip ospf hello-interval 1
 ip ospf dead-interval 4
 ip ospf cost 2
 exit
-interace port_S2
+interface port_S2
 ip ospf hello-interval 1
 ip ospf dead-interval 4
 exit
