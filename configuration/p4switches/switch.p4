@@ -387,7 +387,7 @@ control MyIngress(inout headers hdr,
 
                 // if the packet is a bsd packet, send it to the controller
                 // TOS=192 converted to DSCP should be 48
-                if(hdr.ipv4.dscp == 48 && hdr.bfd.isValid()){
+                if(hdr.ipv4.dscp == 48){
                     clone(CloneType.I2E, 100);
                 }
 

@@ -49,7 +49,6 @@ exit
 interface port_S6
 exit
 interface port_S1
-ip ospf bfd
 exit
 interface port_S2
 exit
