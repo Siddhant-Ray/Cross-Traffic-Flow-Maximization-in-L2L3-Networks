@@ -89,8 +89,6 @@ struct metadata {
     bit<13> flowlet_register_index;
     bit<16> flowlet_id;
 
-    //Metadata for metering on TOS
-    bit<32> meter_tag;
 
     //Metadata for LFA
     bit<1> linkState;
@@ -234,22 +232,7 @@ control MyIngress(inout headers hdr,
     //********************** ADD FOR LFA********************
 
     
-<<<<<<< HEAD
-    // Action to read the flowlet registers
-=======
-    //Action to execute the meter
-    action meter_action(bit<32> meter_idx) {
-        tos_meter.execute_meter((bit<32>)meter_idx, meta.meter_tag);
-
-    }      
-
-    //Action to set tos value
-    action set_tos(bit<6> tos) {
-        //tos = hdr.ipv4.dscp; //Currently crashes
-    } 
-
-
->>>>>>> commented something out
+    // Action to read flowlet registers
     action read_flowlet_registers(){
 
         //compute the register index
@@ -369,17 +352,26 @@ control MyIngress(inout headers hdr,
 
         l2_forward.apply(); 
 
-<<<<<<< HEAD
         //Apply ECMP if valid
 	if (hdr.ipv4.isValid()){
+
+       //********************** ADD FOR LFA********************
+        //Since we already have a next hop routine, I am injecting code into that action which is triggered only by the Linkstate being down.
+        //The Linkstate update call is done here and then it should just trigger in that action. If that fails, we may have to add an action in the switch just for next hop.
+        dst_index.apply(); //This checks if the link to the nextHop is up
+
+        if (meta.linkState > 0){ //if not, then it updates into meta.nextHop the LFA. That then gets triggered in set_nhop action
+                read_alternativePort();
+                rewrite_mac.apply();
+        }
+       
+
+
          
            // Split at per packet basis for bronze traffic over all the equi-cost egress links. This is 
            // because bronze traffic needs very large datarate(12M) and we want to utilise all the links as           //each link has a bandwith of < 12 Mbps at the switch egress. Hence, we extended the flowlet               // switching to near packet switching (inter packet gap <  flowlet timeout) for bronze traffic             //within a flow as packet reordering does not matter for our network.
            // TOS = 32 corresponds to DSCP = 8 (bronze traffic)
            if(hdr.ipv4.dscp == 8){
-=======
-	    if (hdr.ipv4.isValid()){
->>>>>>> First Pass attempt at LFA with Siddhants old master as a basis
 
             @atomic {
                 read_flowlet_registers();
@@ -390,7 +382,6 @@ control MyIngress(inout headers hdr,
                     update_flowlet_id();
                 }
             }
-<<<<<<< HEAD
 	    
 	    //Apply the ecmp group next hop for bronze ( per packet)
            switch (ipv4_lpm.apply().action_run){
@@ -403,20 +394,6 @@ control MyIngress(inout headers hdr,
             else {
 
             //Apply the ecmp normally per flow for silver (TOS =64) and gold (TOS = 128) traffic classes
-=======
-	    //********************** ADD FOR LFA********************
-        //Since we already have a next hop routine, I am injecting code into that action which is triggered only by the Linkstate being down.
-        //The Linkstate update call is done here and then it should just trigger in that action. If that fails, we may have to add an action in the switch just for next hop.
-        dst_index.apply(); //This checks if the link to the nextHop is up
-
-        if (meta.linkState > 0){ //if not, then it updates into meta.nextHop the LFA. That then gets triggered in set_nhop action
-                read_alternativePort();
-                rewrite_mac.apply();
-        }
-        
-        //********************** ADD FOR LFA********************
-	    //Apply the ecmp group next hop 
->>>>>>> First Pass attempt at LFA with Siddhants old master as a basis
             switch (ipv4_lpm.apply().action_run){
                 ecmp_group: {
                     ecmp_group_to_nhop.apply();
