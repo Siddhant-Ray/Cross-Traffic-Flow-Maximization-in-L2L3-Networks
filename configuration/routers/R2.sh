@@ -14,34 +14,39 @@ set -eu  # Exit on error (-e), treat unset variables as errors (-u).
 
 vtysh << EOM
 conf t
+bfd
+peer 10.1.0.1 interface port_R1
+receive-interval 50
+transmit-interval 50
+exit
+peer 10.5.0.2 interface port_R3
+receive-interval 50
+transmit-interval 50
+exit
+peer 10.4.0.2 interface port_R4
+receive-interval 50
+transmit-interval 50
+exit
+exit
 
 router ospf 10
 interface port_R1
-ip ospf hello-interval 1
-ip ospf dead-interval 4
 ip ospf cost 1
+ip ospf bfd
 exit
 interface port_R3
-ip ospf hello-interval 1
-ip ospf dead-interval 4
 ip ospf cost 3
+ip ospf bfd
 exit
 interface port_R4
-ip ospf hello-interval 1
-ip ospf dead-interval 4
 ip ospf cost 2
+ip ospf bfd
 exit
 interface port_S2
-ip ospf hello-interval 1
-ip ospf dead-interval 4
 exit
 interface port_S3
-ip ospf hello-interval 1
-ip ospf dead-interval 4
 exit
 interface port_S4
-ip ospf hello-interval 1
-ip ospf dead-interval 4
 exit
 
 
@@ -60,7 +65,6 @@ EOM
 ###############################################################################
 
 # R4 
-## add back the mtu field? 
 tc qdisc add dev port_R4 handle 1: root htb default 14 direct_qlen 1000000
 tc class add dev port_R4 parent 1: classid 1:1 htb rate 6Mbit ceil 6Mbit burst 15k cburst 15k
 
@@ -85,7 +89,6 @@ tc class add dev port_R4 parent 1: classid 1:1 htb rate 6Mbit ceil 6Mbit burst 1
     tc qdisc add dev port_R4 parent 1:14 handle 40: sfq limit 16256 quantum 1500
 
 # R1 
-## add back the mtu field? 
 tc qdisc add dev port_R1 handle 1: root htb default 14 direct_qlen 1000000
 tc class add dev port_R1 parent 1: classid 1:1 htb rate 4Mbit ceil 4Mbit burst 15k cburst 15k
 
@@ -124,7 +127,6 @@ tc class add dev port_R1 parent 1: classid 1:1 htb rate 4Mbit ceil 4Mbit burst 1
 
 
 # R3 
-## add back the mtu field? 
 tc qdisc add dev port_R3 handle 1: root htb default 14 direct_qlen 1000000
 tc class add dev port_R3 parent 1: classid 1:1 htb rate 4Mbit ceil 4Mbit burst 15k cburst 15k
 
@@ -162,7 +164,6 @@ tc class add dev port_R3 parent 1: classid 1:1 htb rate 4Mbit ceil 4Mbit burst 1
 
 
 # S3
-## add back the mtu field? 
 tc qdisc add dev port_S3 handle 1: root htb default 14 direct_qlen 1000000
 tc class add dev port_S3 parent 1: classid 1:1 htb rate 6Mbit ceil 6Mbit burst 15k cburst 15k
 
@@ -188,7 +189,6 @@ tc class add dev port_S3 parent 1: classid 1:1 htb rate 6Mbit ceil 6Mbit burst 1
 
 
 # S2
-## add back the mtu field? 
 tc qdisc add dev port_S2 handle 1: root htb default 14 direct_qlen 1000000
 tc class add dev port_S2 parent 1: classid 1:1 htb rate 4Mbit ceil 4Mbit burst 15k cburst 15k
 
@@ -228,7 +228,6 @@ tc class add dev port_S2 parent 1: classid 1:1 htb rate 4Mbit ceil 4Mbit burst 1
 
 
 # S4
-## add back the mtu field? 
 tc qdisc add dev port_S4 handle 1: root htb default 14 direct_qlen 1000000
 tc class add dev port_S4 parent 1: classid 1:1 htb rate 4Mbit ceil 4Mbit burst 15k cburst 15k
 
