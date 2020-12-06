@@ -97,6 +97,9 @@ The `default.traffic` scenario is defined as follows:
     Intuitively, gold traffic matters most, followed by silver, then bronze.
     Hosts will indicate the class of their traffic using the `TOS` field in the IP header: 128 for gold, 64 for silver, 32 for bronze.
 
+-  UDP packets payload won't be bigger than 1400 Bytes (but can be lower). That means, adding `ethernet`, `ip`, `udp` headers, sent packets
+   won't be bigger than 1442 bytes. 
+
 There are other traffic scenarios to test your configuration.
 They do not necessarily follow the specification above, but might be helpful to test your configuration.
 
