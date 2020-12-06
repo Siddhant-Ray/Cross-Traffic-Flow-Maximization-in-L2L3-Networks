@@ -32,7 +32,7 @@ header ethernet_t {
 header ipv4_t {
     bit<4>    version;
     bit<4>    ihl;
-    bit<6>    dscp; //This is the new name for the TOS field, which is in hex values: 0x80 for Gold, 0x40 for Silver, 0x20 for Bronze 
+    bit<6>    dscp; //This is the part of the TOS field we will use  
     bit<2>    ecn;
     bit<16>   totalLen;
     bit<16>   identification;
@@ -279,10 +279,9 @@ control MyIngress(inout headers hdr,
             meta.ecmp_group_id = ecmp_group_id;
     }
 
-    //action for routing the next hop 
+    //action for routing the next hop (ECMP) 
     action set_nhop(macAddr_t dstAddr, egressSpec_t port) {
-        //Adding LFA checks. If Links are up, then ECMP overwrites. Otherwise, the LFA table already takes care of this, making this action here trigger, but not actually do anything
-        if (meta.linkState <= 0){ 
+
             //set the src mac address as the previous dst
             hdr.ethernet.srcAddr = hdr.ethernet.dstAddr;
 
@@ -290,14 +289,12 @@ control MyIngress(inout headers hdr,
             hdr.ethernet.dstAddr = dstAddr;
 
             
-            
             //set the output port 
             standard_metadata.egress_spec = port;
         
 
             //decrease ttl by 1
             hdr.ipv4.ttl = hdr.ipv4.ttl - 1;
-        }
     }
 
     table ecmp_group_to_nhop {
@@ -356,21 +353,34 @@ control MyIngress(inout headers hdr,
 	if (hdr.ipv4.isValid()){
 
        //********************** ADD FOR LFA********************
-        //Since we already have a next hop routine, I am injecting code into that action which is triggered only by the Linkstate being down.
-        //The Linkstate update call is done here and then it should just trigger in that action. If that fails, we may have to add an action in the switch just for next hop.
-        dst_index.apply(); //This checks if the link to the nextHop is up
+        // Since we already have a next hop routine, I am injecting code into that action which is triggered 
+        // only by the Linkstate being down.
+        // The Linkstate update call is done here and then it should just trigger in that action. If that fails,
+        // we may have to add an action in the switch just for next hop.
+        
+	dst_index.apply(); //This checks if the link to the nextHop is up
 
-        if (meta.linkState > 0){ //if not, then it updates into meta.nextHop the LFA. That then gets triggered in set_nhop action
+        if (meta.linkState > 0){ 
+
+	//If the link is down, trigger the LFA code
+
                 read_alternativePort();
                 rewrite_mac.apply();
         }
        
+        else {
+  
+	
+        // If Links are up, then ECMP overwrites. Otherwise, the LFA table already takes care of this
 
-
-         
+ 
            // Split at per packet basis for bronze traffic over all the equi-cost egress links. This is 
-           // because bronze traffic needs very large datarate(12M) and we want to utilise all the links as           //each link has a bandwith of < 12 Mbps at the switch egress. Hence, we extended the flowlet               // switching to near packet switching (inter packet gap <  flowlet timeout) for bronze traffic             //within a flow as packet reordering does not matter for our network.
-           // TOS = 32 corresponds to DSCP = 8 (bronze traffic)
+           // because bronze traffic needs very large datarate(12M) and we want to utilise all the links as
+           //each link has a bandwith of < 12 Mbps at the switch egress. Hence, we extended the flowlet
+           // switching to near packet switching (inter packet gap <  flowlet timeout) for bronze traffic   
+           //within a flow as packet reordering does not matter for our network.
+ 
+          // TOS = 32 corresponds to DSCP = 8 (bronze traffic)
            if(hdr.ipv4.dscp == 8){
 
             @atomic {
@@ -401,7 +411,10 @@ control MyIngress(inout headers hdr,
             }
         }
 
+	}	
+
        } 
+
     }
 }
 
