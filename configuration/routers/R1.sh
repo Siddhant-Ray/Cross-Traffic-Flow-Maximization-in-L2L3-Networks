@@ -31,15 +31,15 @@ exit
 
 router ospf 10
 interface port_R2
-ip ospf cost 2
+ip ospf cost 5
 ip ospf bfd
 exit
 interface port_R3
-ip ospf cost 1
+ip ospf cost 10
 ip ospf bfd
 exit
 interface port_R4
-ip ospf cost 2
+ip ospf cost 5
 ip ospf bfd
 exit
 interface port_S6
