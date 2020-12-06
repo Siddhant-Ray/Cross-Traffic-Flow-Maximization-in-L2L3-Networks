@@ -16,16 +16,16 @@ tc class add dev host parent 1: classid 1:1 htb rate 12Mbit ceil 12Mbit burst 15
     ## classes
 
     # gold
-    tc class add dev host parent 1:1 classid 1:11 htb rate 11.9Mbit ceil 6Mbit burst 15k cburst 15K prio 1 
+    tc class add dev host parent 1:1 classid 1:11 htb rate 11.9Mbit ceil 12Mbit burst 15k cburst 15K prio 1 
 
     # silver
-    tc class add dev host parent 1:1 classid 1:12 htb rate 0.04Mbit ceil 6Mbit burst 15k cburst 15K prio 2
+    tc class add dev host parent 1:1 classid 1:12 htb rate 0.04Mbit ceil 12Mbit burst 15k cburst 15K prio 2
 
     # bronze
-    tc class add dev host parent 1:1 classid 1:13 htb rate 0.04Mbit ceil 6Mbit burst 15k cburst 15K prio 3
+    tc class add dev host parent 1:1 classid 1:13 htb rate 0.04Mbit ceil 12Mbit burst 15k cburst 15K prio 3
 
     # other
-    tc class add dev host parent 1:1 classid 1:14 htb rate 0.02Mbit ceil 6Mbit burst 15k cburst 15K prio 4
+    tc class add dev host parent 1:1 classid 1:14 htb rate 0.02Mbit ceil 12Mbit burst 15k cburst 15K prio 4
 
     ## filters
 
