@@ -26,6 +26,12 @@ from networkx.algorithms import all_pairs_dijkstra
 from p4utils.utils.topology import Topology
 from p4utils.utils.sswitch_API import SimpleSwitchAPI
 
+from scapy.all import sniff, IP, Ether, UDP, sendp
+from scapy.contrib.bfd import BFD
+from multiprocessing import Process
+import threading
+import time
+
 
 class Controller(object):
     """The central controller for your p4 switches."""
@@ -43,7 +49,12 @@ class Controller(object):
         # Basic initialization. *Do not* change.
         self.controllers = {}
         self._connect_to_switches()
-        self._reset_states()        
+        self._reset_states()
+
+        # bfd implementation
+        self.ip_lookup_table = {}
+        self.populate_ip_lookup_table()
+        self.add_mirrors()
 
         # Start main loop
         self.main()
@@ -79,23 +90,58 @@ class Controller(object):
         # Initialization of L2 forwarding. Feel free to modify.
         self.create_l2_multicast_group()
         self.add_l2_forwarding_rules()
-        
+
         #Call ECMP route
         self.ECMP_route()
 
         #Installing LFAs
         # Install nexthop indices and populate registers.
-        self.install_nexthop_indices_LFA() # This installs the indices, which get used to query Link Status
-        self.update_nexthops_LFA()  # This matches ports to indices, so that we can check their linkstate in P4
-        
-        self.setup_link_map() #THis includes Routers in the switchgraph        
-        self.install_link_register() #Sets up the registers that track downed interfaces
-        self.LFA_flag = 0 #This is changed when there was a change in status of at least one link
+        self.install_nexthop_indices_LFA(
+        )  # This installs the indices, which get used to query Link Status
+        self.update_nexthops_LFA(
+        )  # This matches ports to indices, so that we can check their linkstate in P4
+
+        self.setup_link_map()  #THis includes Routers in the switchgraph
+        self.install_link_register(
+        )  #Sets up the registers that track downed interfaces
+        self.LFA_flag = 0  #This is changed when there was a change in status of at least one link
         # self.i_test = 0
 
-        while(True):
-            self.check_interface_status() #Function that still needs to be written, that updates
-            self.trigger_lfa()            
+        # all those have to run in parallel, thus we are using threads
+        # each functions would be blocking otherwise
+        sniffing = threading.Thread(target=self.sniff_bfd_packets)
+        sniffing.daemon = True
+        sniffing.start()
+
+        heartbeat = threading.Thread(
+            target=self.send_heartbeat_between_switches)
+        heartbeat.daemon = True
+        heartbeat.start()
+
+        time.sleep(2)
+
+        links = threading.Thread(target=self.check_link_status)
+        links.daemon = True
+        links.start()
+
+        interfaces = threading.Thread(
+            target=self.check_interface_and_trigger_lfa)
+        interfaces.daemon = True
+        interfaces.start()
+
+        # keeping main thread alive so others dont get killed
+        while True:
+            time.sleep(1)
+
+    def check_interface_and_trigger_lfa(self):
+        while (True):
+            try:
+                self.check_interface_status(
+                )  #Function that still needs to be written, that updates
+                self.trigger_lfa()
+            except (KeyboardInterrupt, SystemExit):
+                print("Exiting...")
+                break
 
     def add_l2_forwarding_rules(self):
         """Add L2 forwarding groups to all switches.
@@ -140,7 +186,7 @@ class Controller(object):
             # Update group.
             controller.mc_node_create(0, port_list)
             controller.mc_node_associate(1, 0)
-    
+
     def set_table_defaults(self):
         """Set table defaults to drop
         """
@@ -150,125 +196,167 @@ class Controller(object):
 
     def ECMP_route(self):
         """Populates the tables for ECMP"""
-        switch_ecmp_groups = {sw_name:{} for sw_name in self.topo.get_p4switches().keys()}
-        
+        switch_ecmp_groups = {
+            sw_name: {}
+            for sw_name in self.topo.get_p4switches().keys()
+        }
+
         for sw_name, controller in self.controllers.items():
             for sw_dst in self.topo.get_p4switches():
 
                 #We can create direct connections
-                if  sw_name == sw_dst:
+                if sw_name == sw_dst:
                     for host in self.topo.get_hosts_connected_to(sw_name):
-                        sw_port = self.topo.node_to_node_port_num(sw_name, host)
+                        sw_port = self.topo.node_to_node_port_num(
+                            sw_name, host)
                         host_ip = self.topo.get_host_ip(host) + "/24"
                         host_mac = self.topo.get_host_mac(host)
 
                         #add ECMP table rules
                         print "table_add at {}:".format(sw_name)
-                        self.controllers[sw_name].table_add("ipv4_lpm", "set_nhop", [str(host_ip)], [str(host_mac), str(sw_port)])
-                
+                        self.controllers[sw_name].table_add(
+                            "ipv4_lpm", "set_nhop", [str(host_ip)],
+                            [str(host_mac), str(sw_port)])
+
                 #Check if there are directly connected hosts
                 else:
                     if self.topo.get_hosts_connected_to(sw_dst):
-                        paths = self.topo.get_shortest_paths_between_nodes(sw_name, sw_dst)
+                        paths = self.topo.get_shortest_paths_between_nodes(
+                            sw_name, sw_dst)
                         for host in self.topo.get_hosts_connected_to(sw_dst):
-                            
+
                             #Next hop is the destination
                             if len(paths) == 1:
                                 next_hop = paths[0][1]
 
                                 host_ip = self.topo.get_host_ip(host) + "/24"
-                                sw_port = self.topo.node_to_node_port_num(sw_name, next_hop)
-                                dst_sw_mac = self.topo.node_to_node_mac(next_hop, sw_name)
+                                sw_port = self.topo.node_to_node_port_num(
+                                    sw_name, next_hop)
+                                dst_sw_mac = self.topo.node_to_node_mac(
+                                    next_hop, sw_name)
 
                                 #add ECMP table rules
                                 print "table_add at {}:".format(sw_name)
-                                self.controllers[sw_name].table_add("ipv4_lpm", "set_nhop", [str(host_ip)], [str(dst_sw_mac), str(sw_port)])
-                            
+                                self.controllers[sw_name].table_add(
+                                    "ipv4_lpm", "set_nhop", [str(host_ip)],
+                                    [str(dst_sw_mac),
+                                     str(sw_port)])
+
                             #Multiple next hops are possible to reach the destination
                             elif len(paths) > 1:
                                 next_hops = [x[1] for x in paths]
-                                dst_macs_ports = [(self.topo.node_to_node_mac(next_hop, sw_name), self.topo.node_to_node_port_num(sw_name, next_hop)) for next_hop in next_hops]
+                                dst_macs_ports = [
+                                    (self.topo.node_to_node_mac(
+                                        next_hop, sw_name),
+                                     self.topo.node_to_node_port_num(
+                                         sw_name, next_hop))
+                                    for next_hop in next_hops
+                                ]
                                 host_ip = self.topo.get_host_ip(host) + "/24"
 
-                                
                                 #Check if the ecmp group already exists. The ecmp group is defined by the number of next ports used, thus we can use dst_macs_ports as the key
 
-                                if switch_ecmp_groups[sw_name].get(tuple(dst_macs_ports), None):
-                                    ecmp_group_id = switch_ecmp_groups[sw_name].get(tuple(dst_macs_ports), None)
+                                if switch_ecmp_groups[sw_name].get(
+                                        tuple(dst_macs_ports), None):
+                                    ecmp_group_id = switch_ecmp_groups[
+                                        sw_name].get(tuple(dst_macs_ports),
+                                                     None)
                                     print "table_add at {}:".format(sw_name)
-                                    self.controllers[sw_name].table_add("ipv4_lpm", "ecmp_group", [str(host_ip)], [str(ecmp_group_id), str(len(dst_macs_ports))])
-                                
+                                    self.controllers[sw_name].table_add(
+                                        "ipv4_lpm", "ecmp_group",
+                                        [str(host_ip)], [
+                                            str(ecmp_group_id),
+                                            str(len(dst_macs_ports))
+                                        ])
+
                                 #Create a new ECMP group for this switch
                                 else:
-                                    new_ecmp_group_id = len(switch_ecmp_groups[sw_name]) + 1
-                                    switch_ecmp_groups[sw_name][tuple(dst_macs_ports)] = new_ecmp_group_id
+                                    new_ecmp_group_id = len(
+                                        switch_ecmp_groups[sw_name]) + 1
+                                    switch_ecmp_groups[sw_name][tuple(
+                                        dst_macs_ports)] = new_ecmp_group_id
                                     #add group
-                                    for i, (mac, port) in enumerate(dst_macs_ports):
-                                        print "table_add at {}:".format(sw_name)
-                                        self.controllers[sw_name].table_add("ecmp_group_to_nhop", "set_nhop", [str(new_ecmp_group_id), str(i)], [str(mac), str(port)])
+                                    for i, (mac,
+                                            port) in enumerate(dst_macs_ports):
+                                        print "table_add at {}:".format(
+                                            sw_name)
+                                        self.controllers[sw_name].table_add(
+                                            "ecmp_group_to_nhop", "set_nhop",
+                                            [str(new_ecmp_group_id),
+                                             str(i)],
+                                            [str(mac), str(port)])
 
                                     #add forwarding rule
                                     print "table_add at {}:".format(sw_name)
-                                    self.controllers[sw_name].table_add("ipv4_lpm", "ecmp_group", [str(host_ip)],[str(new_ecmp_group_id), str(len(dst_macs_ports))])
+                                    self.controllers[sw_name].table_add(
+                                        "ipv4_lpm", "ecmp_group",
+                                        [str(host_ip)], [
+                                            str(new_ecmp_group_id),
+                                            str(len(dst_macs_ports))
+                                        ])
 
     ####################### LFA INSTALL ################################
     # Link management commands.
     # =========================
 
-    def check_interface_status(self): #This needs to be triggered by OSPF to notice a link state is down
+    def check_interface_status(
+        self
+    ):  #This needs to be triggered by OSPF to notice a link state is down
         #This will need to be generated somehow
-        
+
         # if (self.i_test == 1):
         #     test_link = (u'S3', u'S4')
         #     self.heartbeat_register[test_link] = 0
         # if(self.i_test == 3):
         #     test_link = (u'S3', u'S4')
         #     self.heartbeat_register[test_link] = 1
-        
+
         #Need to account for duplicates, especially if they disagree
 
-        self.LFA_flag = 0 #This flag gets raised if there was a transition in the heartbeat register
+        self.LFA_flag = 0  #This flag gets raised if there was a transition in the heartbeat register
 
         for link in self.heartbeat_register:
-            status = self.heartbeat_register[link]
+            status = self.heartbeat_register[link]['status']
             current_reg_value = self.links_states[link]
 
-            heartbeat_state = "down" if status == 0 else "up" #For now, assume that heartbeat  is 0 or 1
+            heartbeat_state = "down" if status == 0 else "up"  #For now, assume that heartbeat  is 0 or 1
 
             if heartbeat_state == current_reg_value:
                 pass
             else:
-                self.LFA_flag = 1 #As soon as there is one transition, this becomes 1
-                if status == 0: #That is, if its down
-                    self.update_interfaces(link, "down") # Set the self.interfaces dictionary that Pyton uses
-                    self.update_linkstate(link, "down")  # Sets the P4 registers          
+                self.LFA_flag = 1  #As soon as there is one transition, this becomes 1
+                if status == 0:  #That is, if its down
+                    self.update_interfaces(
+                        link, "down"
+                    )  # Set the self.interfaces dictionary that Pyton uses
+                    self.update_linkstate(link,
+                                          "down")  # Sets the P4 registers
                 else:
                     self.update_interfaces(link, "up")  # See above
-                    self.update_linkstate(link, "up")   # See above
+                    self.update_linkstate(link, "up")  # See above
 
         # self.i_test = self.i_test  + 1
 
-
-    def trigger_lfa(self):  
+    def trigger_lfa(self):
         """Notify controller of failures (or lack thereof)."""
         failed = self.check_all_links()
-        if self.LFA_flag: #So if there was a change
+        if self.LFA_flag:  #So if there was a change
             print("Processing change in Heartbeat")
             self.failure_notification(failed)
         else:
-            pass #Otherwise, continue on as before
+            pass  #Otherwise, continue on as before
 
-     # Link management helpers.
+    # Link management helpers.
     # ========================
 
     def check_all_links(self):
         """Check the state for all link interfaces."""
         failed_links = []
         for link in self.accessible_links:
-            if not (self.if_up(link)): #Triggered thus by not (False)
+            if not (self.if_up(link)):  #Triggered thus by not (False)
                 failed_links.append(link)
         return failed_links
- 
+
     def if_up(self, link):
         """Return True if interface is up, else False."""
         status = self.links_states[link]
@@ -279,7 +367,7 @@ class Controller(object):
 
     def update_interfaces(self, link, state):
         """Set link to state (up or down)."""
-        self.links_states[link] = state     
+        self.links_states[link] = state
 
     def get_interfaces(self, link):
         """Return tuple of interfaces on both sides of the link."""
@@ -302,14 +390,14 @@ class Controller(object):
         The register array is indexed by the port number, e.g., the state for
         port 0 is stored at index 0.
         """
-        node1, node2 = link        
+        node1, node2 = link
         port1, port2 = self.get_ports(link)
         switches = self.topo.get_switches()
         _state = "1" if state == "down" else "0"
-       
+
         if node1 in switches:
             self.update_switch_linkstate(node1, port1, _state)
-        
+
         if node2 in switches:
             self.update_switch_linkstate(node2, port2, _state)
 
@@ -324,10 +412,14 @@ class Controller(object):
         self.links_states = {}
         self.heartbeat_register = {}
         for link in self.accessible_links:
-            self.links_states[link] = "up" # This register is for the controller itself
-            self.heartbeat_register[link] = 1 #This register is updated continously by the heartbeat message
+            self.links_states[
+                link] = "up"  # This register is for the controller itself
+            self.heartbeat_register[link] = {
+                'count': 0,
+                'status': 1
+            }  #This register is updated continously by the heartbeat message
         print("Registers installed")
-    
+
     def setup_link_map(self):
         """Like Switchgraph, but also includes Routers"""
         self.accessible_links = []
@@ -344,7 +436,7 @@ class Controller(object):
 
         print("Accessible Link Map Setup")
 
-    def get_host_net(self, host): #Imported from Exercise
+    def get_host_net(self, host):  #Imported from Exercise
         """Return ip and subnet of a host.
 
         Args:
@@ -356,7 +448,7 @@ class Controller(object):
         gateway = self.topo.get_host_gateway_name(host)
         return self.topo[host][gateway]['ip']
 
-    def get_nexthop_index(self, host): #Imported from Exercise
+    def get_nexthop_index(self, host):  #Imported from Exercise
         """Return the nexthop index for a destination.
 
         Args:
@@ -369,7 +461,7 @@ class Controller(object):
         host_list = sorted(list(self.topo.get_hosts().keys()))
         return host_list.index(host)
 
-    def get_port(self, node, nexthop_node): #Imported from Exercise
+    def get_port(self, node, nexthop_node):  #Imported from Exercise
         """Return egress port for nexthop from the view of node.
 
         Args:
@@ -381,15 +473,17 @@ class Controller(object):
         """
         return self.topo.node_to_node_port_num(node, nexthop_node)
 
-    def failure_notification(self, failures): # This method gets called by the check_all_links method
+    def failure_notification(
+            self,
+            failures):  # This method gets called by the check_all_links method
         """Called if a link fails.
 
         Args:
             failures (list(tuple(str, str))): List of failed links.
         """
         self.update_nexthops_LFA(failures=failures)
-    
-    def dijkstra(self, failures=None): #Imported from Exercise
+
+    def dijkstra(self, failures=None):  #Imported from Exercise
         """Compute shortest paths and distances.
 
         Args:
@@ -413,7 +507,7 @@ class Controller(object):
 
         return distances, paths
 
-    def compute_nexthops(self, failures=None): #Imported from Exercise
+    def compute_nexthops(self, failures=None):  #Imported from Exercise
         """Compute the best nexthops for all switches to each host.
 
         Optionally, a link can be marked as failed. This link will be excluded
@@ -446,7 +540,7 @@ class Controller(object):
 
         return results
 
-    def install_nexthop_indices_LFA(self): 
+    def install_nexthop_indices_LFA(self):
         """Install the mapping from prefix to nexthop ids for all switches."""
         for switch, control in self.controllers.items():
             print "Installing nexthop indices for LFA setup '%s'." % switch
@@ -455,12 +549,14 @@ class Controller(object):
             for host in self.topo.get_hosts():
                 subnet = self.get_host_net(host)
                 index = self.get_nexthop_index(host)
-                control.table_add('dst_index', 'query_nextLink',
-                                  [subnet], [str(index)])
+                control.table_add('dst_index', 'query_nextLink', [subnet],
+                                  [str(index)])
 
     def update_nexthops_LFA(self, failures=None):
         """Install nexthops in all switches."""
-        nexthops = self.compute_nexthops(failures=failures) # We need to link the ECMP here with the LFA, so that the nexthops used here are the ECMP ones
+        nexthops = self.compute_nexthops(
+            failures=failures
+        )  # We need to link the ECMP here with the LFA, so that the nexthops used here are the ECMP ones
         lfas = self.compute_lfas(nexthops, failures=failures)
 
         for switch, destinations in nexthops.items():
@@ -477,7 +573,7 @@ class Controller(object):
 
         # LFA solution.
         # =============
-       
+
         for host, nexthop in destinations:
             nexthop_id = self.get_nexthop_index(host)
             if host == nexthop:
@@ -500,7 +596,8 @@ class Controller(object):
             # connected = set(self.topo.get_switches_connected_to(switch))
             #Alternate:
             neighbours = set(self.topo.get_neighbors(switch))
-            connected_hosts = self.topo.get_hosts_connected_to(switch)[0] #each switch is connected to just one host
+            connected_hosts = self.topo.get_hosts_connected_to(switch)[
+                0]  #each switch is connected to just one host
             connected = neighbours - {connected_hosts}
 
             for host, nexthop in destinations:
@@ -513,8 +610,8 @@ class Controller(object):
                 for alternate in others:
                     # The following condition needs to hold:
                     # D(N, D) < D(N, S) + D(S, D)
-                    if (_d[alternate][host]
-                            < _d[alternate][switch] + _d[switch][host]):
+                    if (_d[alternate][host] <
+                            _d[alternate][switch] + _d[switch][host]):
                         total_dist = _d[switch][alternate] + \
                             _d[alternate][host]
                         noloop.append((alternate, total_dist))
@@ -526,15 +623,185 @@ class Controller(object):
                     switch_lfas[host] = min(noloop, key=lambda x: x[1])[0]
 
         return lfas
+
     ####################### LFA INSTALL ################################
+
+    def add_mirrors(self):
+        """Add mirrors for the data plane to communicate with the control plane.
+        """
+
+        base_session_id = 100
+        for switch in self.topo.get_p4switches().keys():
+            cpu_port = self.topo.get_cpu_port_index(switch)
+            self.controllers[switch].mirroring_add(base_session_id, cpu_port)
+
+    def update_heartbeat_register(self, pkt):
+        """Update the heartbeat register according to incoming packets.
+
+        :param pkt: an incoming bfd packet
+        :type pkt: bfd packet
+        """
+
+        # extract src and dst ip addresses
+        src_address = pkt[IP].src
+        dst_address = pkt[IP].dst
+
+        # convert addresses to names to insert into the heartbeat_register
+        src_node = self.ip_lookup_table[src_address]
+        dst_node = self.ip_lookup_table[dst_address]
+
+        try:
+            # increase the counter
+            self.heartbeat_register[(src_node, dst_node)]['count'] += 1
+            # and set the link state to up
+            self.heartbeat_register[(src_node, dst_node)]['status'] = 1
+        except KeyError as e:
+            # if the key is the other way around
+            self.heartbeat_register[(dst_node, src_node)]['count'] += 1
+            self.heartbeat_register[(dst_node, src_node)]['status'] = 1
+
+    def sniff_bfd_packets(self):
+        """Sniff on the CPU ports for BFD packets.
+        """
+
+        try:
+            # get the names of all p4 cpu interface
+            cpu_port_interfaces = [
+                self.topo.get_cpu_port_intf(switch)
+                for switch in self.topo.get_p4switches().keys()
+            ]
+
+            # sniff on all cpu port interfaces for bfd packets
+            # and invoke the update_heartbeat_register function on each packet
+            sniff(
+                iface=cpu_port_interfaces,
+                prn=self.update_heartbeat_register,
+                lfilter=lambda x: x.haslayer(BFD),
+            )
+        except (KeyboardInterrupt, SystemExit):
+            print("Exiting...")
+
+    def send_heartbeat_between_switches(self):
+        """Send hearbeats between switch to switch links.
+        """
+
+        while (True):
+            try:
+                # send heartbeat between S6-S1
+                sent_package = sendp(Ether(dst='fa:70:22:e3:dd:c9',
+                                           src='00:00:01:00:00:01',
+                                           type=2048) / IP(version=4,
+                                                           tos=192,
+                                                           dst='1.0.0.1',
+                                                           proto=17,
+                                                           src='6.0.0.1') /
+                                     UDP(sport=49155, dport=3784, len=32) /
+                                     BFD(version=1,
+                                         diag=0,
+                                         your_discriminator=2025488576,
+                                         flags=32,
+                                         my_discriminator=1,
+                                         echo_rx_interval=50000,
+                                         len=24,
+                                         detect_mult=3,
+                                         min_tx_interval=50000,
+                                         min_rx_interval=50000,
+                                         sta=1),
+                                     iface='1-S6-cpu',
+                                     verbose=False)
+
+                # send heartbeat between S4-S3
+                sent_package = sendp(Ether(dst=' b2:32:83:50:66:b',
+                                           src='00:00:01:00:00:01',
+                                           type=2048) / IP(version=4,
+                                                           tos=192,
+                                                           dst='3.0.0.1',
+                                                           proto=17,
+                                                           src='4.0.0.1') /
+                                     UDP(sport=49155, dport=3784, len=32) /
+                                     BFD(version=1,
+                                         diag=0,
+                                         your_discriminator=2025488576,
+                                         flags=32,
+                                         my_discriminator=1,
+                                         echo_rx_interval=50000,
+                                         len=24,
+                                         detect_mult=3,
+                                         min_tx_interval=50000,
+                                         min_rx_interval=50000,
+                                         sta=1),
+                                     iface='1-S4-cpu',
+                                     verbose=False)
+
+                # send the heartbeat packets every 0.5 seconds
+                time.sleep(0.5)
+            except (KeyboardInterrupt, SystemExit):
+                print("Exiting...")
+                break
+
+    def populate_ip_lookup_table(self):
+        """Populates a table that maps IP addresses to names.
+        """
+        self.ip_lookup_table = {
+            '1.0.0.1': u'S1',
+            '2.0.0.1': u'S2',
+            '3.0.0.1': u'S3',
+            '4.0.0.1': u'S4',
+            '5.0.0.1': u'S5',
+            '6.0.0.1': u'S6',
+            '1.0.0.2': u'R1',
+            '6.0.0.3': u'R1',
+            '2.0.0.2': u'R1',
+            '2.0.0.3': u'R2',
+            '3.0.0.2': u'R2',
+            '4.0.0.3': u'R2',
+            '3.0.0.3': u'R3',
+            '4.0.0.2': u'R3',
+            '5.0.0.3': u'R3',
+            '1.0.0.3': u'R4',
+            '6.0.0.2': u'R4',
+            '5.0.0.2': u'R4',
+        }
+
+    def check_link_status(self):
+        """Checks the status of each link. If there hasn't been received a packet in 2 seconds, consider the link as down.
+        """
+
+        while (True):
+
+            try:
+                # check for every link
+                for link in self.heartbeat_register:
+                    # if we sniffed a bfd packet
+                    if self.heartbeat_register[link]['count'] == 0:
+                        print("link %s failed", link)
+                        # if not, set the link status to 0
+                        self.heartbeat_register[link]['status'] = 0
+                    else:
+                        # if, reset the count to 0 for the next epoch
+                        # setting the status to 1 if its up again happens
+                        # immediately in update_heartbeat_register
+                        self.heartbeat_register[link]['count'] = 0
+
+                # wait 1.5 seconds before checking again as the heartbeat is currently sent every 1s
+                time.sleep(1.5)
+            except (KeyboardInterrupt, SystemExit):
+                print("Exiting...")
+                break
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--topo', help='Path of topology.db.',
-                        type=str, required=False,
-                        default="/home/adv-net/infrastructure/build/topology.db")
-    parser.add_argument('--traffic', help='Path of traffic scenario.',
-                        type=str, required=False,
+    parser.add_argument(
+        '--topo',
+        help='Path of topology.db.',
+        type=str,
+        required=False,
+        default="/home/adv-net/infrastructure/build/topology.db")
+    parser.add_argument('--traffic',
+                        help='Path of traffic scenario.',
+                        type=str,
+                        required=False,
                         default=None)
     args = parser.parse_args()
 

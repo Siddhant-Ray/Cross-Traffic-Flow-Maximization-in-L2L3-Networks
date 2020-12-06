@@ -15,6 +15,18 @@ set -eu  # Exit on error (-e), treat unset variables as errors (-u).
 vtysh << EOM
 conf t
 bfd
+peer 1.0.0.1 interface port_S1
+receive-interval 50
+transmit-interval 50
+exit
+peer 5.0.0.1 interface port_S5
+receive-interval 50
+transmit-interval 50
+exit
+peer 6.0.0.1 interface port_S6
+receive-interval 50
+transmit-interval 50
+exit
 peer 10.3.0.1 interface port_R1
 receive-interval 50
 transmit-interval 50
