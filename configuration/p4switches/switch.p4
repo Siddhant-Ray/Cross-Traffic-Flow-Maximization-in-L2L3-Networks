@@ -75,6 +75,20 @@ header udp_t {
     bit<16> checksum;
 }
 
+header bfd_t {
+    bit<3> version;
+    bit<5> diag;
+    bit<2> sta;
+    bit<6> flags;
+    bit<8> detect_mult;
+    bit<8> len;
+    bit<32> my_discriminator;
+    bit<32> your_discriminator;
+    bit<32> min_tx_interval;
+    bit<32> min_rx_interval;
+    bit<32> echo_rx_interval;
+}
+
 
 struct metadata {
     
@@ -101,6 +115,7 @@ struct headers {
     ipv4_t 	 ipv4;
     tcp_t	 tcp;
     udp_t        udp;
+    bfd_t bfd;
 }
 
 /*************************************************************************
@@ -350,71 +365,73 @@ control MyIngress(inout headers hdr,
         l2_forward.apply(); 
 
         //Apply ECMP if valid
-	if (hdr.ipv4.isValid()){
+        if (hdr.ipv4.isValid()){
 
-       //********************** ADD FOR LFA********************
-        // Since we already have a next hop routine, I am injecting code into that action which is triggered 
-        // only by the Linkstate being down.
-        // The Linkstate update call is done here and then it should just trigger in that action. If that fails,
-        // we may have to add an action in the switch just for next hop.
-        
-	dst_index.apply(); //This checks if the link to the nextHop is up
+            //********************** ADD FOR LFA********************
+            // Since we already have a next hop routine, I am injecting code into that action which is triggered 
+            // only by the Linkstate being down.
+            // The Linkstate update call is done here and then it should just trigger in that action. If that fails,
+            // we may have to add an action in the switch just for next hop.
+            
+            dst_index.apply(); //This checks if the link to the nextHop is up
 
-        if (meta.linkState > 0){ 
+            if (meta.linkState > 0){ 
 
-	//If the link is down, trigger the LFA code
+                //If the link is down, trigger the LFA code
 
                 read_alternativePort();
                 rewrite_mac.apply();
-        }
-       
-        else {
-  
-	
-        // If Links are up, then ECMP overwrites. Otherwise, the LFA table already takes care of this
-
- 
-           // Split at per packet basis for bronze traffic over all the equi-cost egress links. This is 
-           // because bronze traffic needs very large datarate(12M) and we want to utilise all the links as
-           //each link has a bandwith of < 12 Mbps at the switch egress. Hence, we extended the flowlet
-           // switching to near packet switching (inter packet gap <  flowlet timeout) for bronze traffic   
-           //within a flow as packet reordering does not matter for our network.
- 
-          // TOS = 32 corresponds to DSCP = 8 (bronze traffic)
-           if(hdr.ipv4.dscp == 8){
-
-            @atomic {
-                read_flowlet_registers();
-                meta.flowlet_time_diff = standard_metadata.ingress_global_timestamp - meta.flowlet_last_stamp;
-
-                //check if inter-packet gap is < the timeout
-                if (meta.flowlet_time_diff < FLOWLET_TIMEOUT_OTHER){
-                    update_flowlet_id();
-                }
             }
-	    
-	    //Apply the ecmp group next hop for bronze ( per packet)
-           switch (ipv4_lpm.apply().action_run){
-                ecmp_group: {
-                    ecmp_group_to_nhop.apply();
-                }
-            }
-        }
-
+        
             else {
 
-            //Apply the ecmp normally per flow for silver (TOS =64) and gold (TOS = 128) traffic classes
-            switch (ipv4_lpm.apply().action_run){
-                ecmp_group: {
-                    ecmp_group_to_nhop.apply();
+                // if the packet is a bsd packet, send it to the controller
+                // TOS=192 converted to DSCP should be 48
+                if(hdr.ipv4.dscp == 48 && hdr.bfd.isValid()){
+                    clone(CloneType.I2E, 100);
                 }
-            }
-        }
 
-	}	
+                // If Links are up, then ECMP overwrites. Otherwise, the LFA table already takes care of this
 
-       } 
+        
+                // Split at per packet basis for bronze traffic over all the equi-cost egress links. This is 
+                // because bronze traffic needs very large datarate(12M) and we want to utilise all the links as
+                //each link has a bandwith of < 12 Mbps at the switch egress. Hence, we extended the flowlet
+                // switching to near packet switching (inter packet gap <  flowlet timeout) for bronze traffic   
+                //within a flow as packet reordering does not matter for our network.
+        
+                // TOS = 32 corresponds to DSCP = 8 (bronze traffic)
+                if(hdr.ipv4.dscp == 8){
 
+                    @atomic {
+                        read_flowlet_registers();
+                        meta.flowlet_time_diff = standard_metadata.ingress_global_timestamp - meta.flowlet_last_stamp;
+
+                        //check if inter-packet gap is < the timeout
+                        if (meta.flowlet_time_diff < FLOWLET_TIMEOUT_OTHER){
+                            update_flowlet_id();
+                        }
+                    }
+                
+                    //Apply the ecmp group next hop for bronze ( per packet)
+                    switch (ipv4_lpm.apply().action_run){
+                        ecmp_group: {
+                            ecmp_group_to_nhop.apply();
+                        }
+                    }
+                }
+
+                else {
+
+                    //Apply the ecmp normally per flow for silver (TOS =64) and gold (TOS = 128) traffic classes
+                    switch (ipv4_lpm.apply().action_run){
+                        ecmp_group: {
+                            ecmp_group_to_nhop.apply();
+                        }
+                    }
+                }
+            }	
+        } 
     }
 }
 
@@ -469,6 +486,7 @@ control MyDeparser(packet_out packet, in headers hdr) {
 
         //Only emited if valid
         packet.emit(hdr.udp);
+        packet.emit(hdr.bfd);
 
     }
 }
