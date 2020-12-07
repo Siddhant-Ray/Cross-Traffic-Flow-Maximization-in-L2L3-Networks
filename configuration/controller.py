@@ -642,23 +642,26 @@ class Controller(object):
         :type pkt: bfd packet
         """
 
-        # extract src and dst ip addresses
-        src_address = pkt[IP].src
-        dst_address = pkt[IP].dst
-
-        # convert addresses to names to insert into the heartbeat_register
-        src_node = self.ip_lookup_table[src_address]
-        dst_node = self.ip_lookup_table[dst_address]
-
         try:
-            # increase the counter
-            self.heartbeat_register[(src_node, dst_node)]['count'] += 1
-            # and set the link state to up
-            self.heartbeat_register[(src_node, dst_node)]['status'] = 1
+            # extract src and dst ip addresses
+            src_address = pkt[IP].src
+            dst_address = pkt[IP].dst
+
+            # convert addresses to names to insert into the heartbeat_register
+            src_node = self.ip_lookup_table[src_address]
+            dst_node = self.ip_lookup_table[dst_address]
+
+            try:
+                # increase the counter
+                self.heartbeat_register[(src_node, dst_node)]['count'] += 1
+                # and set the link state to up
+                self.heartbeat_register[(src_node, dst_node)]['status'] = 1
+            except KeyError as e:
+                # if the key is the other way around
+                self.heartbeat_register[(dst_node, src_node)]['count'] += 1
+                self.heartbeat_register[(dst_node, src_node)]['status'] = 1
         except KeyError as e:
-            # if the key is the other way around
-            self.heartbeat_register[(dst_node, src_node)]['count'] += 1
-            self.heartbeat_register[(dst_node, src_node)]['status'] = 1
+            print("address not in lookup table")
 
     def sniff_bfd_packets(self):
         """Sniff on the CPU ports for BFD packets.
