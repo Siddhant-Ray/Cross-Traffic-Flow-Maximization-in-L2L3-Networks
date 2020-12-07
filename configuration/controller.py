@@ -124,10 +124,10 @@ class Controller(object):
         links.daemon = True
         links.start()
 
-        interfaces = threading.Thread(
-            target=self.check_interface_and_trigger_lfa)
-        interfaces.daemon = True
-        interfaces.start()
+        # interfaces = threading.Thread(
+        #     target=self.check_interface_and_trigger_lfa)
+        # interfaces.daemon = True
+        # interfaces.start()
 
         # keeping main thread alive so others dont get killed
         while True:
@@ -703,30 +703,33 @@ class Controller(object):
                         min_rx_interval=50000,
                         sta=1),
                     iface='1-S6-cpu',
+                    verbose=False
                 )
 
                 # send heartbeat between S4-S3
-                sent_package = sendp(Ether(dst=' b2:32:83:50:66:b',
-                                           src='00:00:01:00:00:01',
-                                           type=2048) / IP(version=4,
-                                                           tos=192,
-                                                           dst='3.0.0.1',
-                                                           proto=17,
-                                                           src='4.0.0.1') /
-                                     UDP(sport=49155, dport=3784, len=32) /
-                                     BFD(version=1,
-                                         diag=0,
-                                         your_discriminator=2025488576,
-                                         flags=32,
-                                         my_discriminator=1,
-                                         echo_rx_interval=50000,
-                                         len=24,
-                                         detect_mult=3,
-                                         min_tx_interval=50000,
-                                         min_rx_interval=50000,
-                                         sta=1),
-                                     iface='1-S4-cpu',
-                                     inter=0.5)
+                sent_package = sendp(
+                    Ether(dst=' b2:32:83:50:66:b',
+                          src='00:00:01:00:00:01',
+                          type=2048) / IP(version=4,
+                                          tos=192,
+                                          dst='3.0.0.1',
+                                          proto=17,
+                                          src='4.0.0.1') /
+                    UDP(sport=49155, dport=3784, len=32) /
+                    BFD(version=1,
+                        diag=0,
+                        your_discriminator=2025488576,
+                        flags=32,
+                        my_discriminator=1,
+                        echo_rx_interval=50000,
+                        len=24,
+                        detect_mult=3,
+                        min_tx_interval=50000,
+                        min_rx_interval=50000,
+                        sta=1),
+                    iface='1-S4-cpu',
+                    verbose=False
+                )
 
                 time.sleep(0.5)
             except (KeyboardInterrupt, SystemExit):
@@ -758,12 +761,14 @@ class Controller(object):
     def check_link_status(self):
 
         while (True):
+            print(self.heartbeat_register)
 
             try:
                 # check for every link
                 for link in self.heartbeat_register:
                     # if we sniffed a bfd packet
                     if self.heartbeat_register[link]['count'] == 0:
+                        print("link %s failed",link)
                         # if not, set the link status to 0
                         self.heartbeat_register[link]['status'] = 0
                     else:
