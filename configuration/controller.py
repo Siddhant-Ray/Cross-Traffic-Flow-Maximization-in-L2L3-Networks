@@ -774,7 +774,7 @@ class Controller(object):
                 for link in self.heartbeat_register:
                     # if we sniffed a bfd packet
                     if self.heartbeat_register[link]['count'] == 0:
-                        print("link %s failed", link)
+                        print("link {} failed".format(link))
                         # if not, set the link status to 0
                         self.heartbeat_register[link]['status'] = 0
                     else:
