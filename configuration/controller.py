@@ -754,8 +754,8 @@ class Controller(object):
             '4.0.0.2': u'R3',
             '5.0.0.3': u'R3',
             '1.0.0.3': u'R4',
-            '6.0.0.2': u'R3',
-            '5.0.0.2': u'R3',
+            '6.0.0.2': u'R4',
+            '5.0.0.2': u'R4',
         }
 
     def check_link_status(self):
