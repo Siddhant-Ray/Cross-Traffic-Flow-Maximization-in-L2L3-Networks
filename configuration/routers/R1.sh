@@ -30,6 +30,12 @@ exit
 peer 1.0.0.1 interface port_S1
 receive-interval 50
 transmit-interval 50
+peer 2.0.0.1 interface port_S2
+receive-interval 50
+transmit-interval 50
+peer 6.0.0.1 interface port_S6
+receive-interval 50
+transmit-interval 50
 exit
 exit
 

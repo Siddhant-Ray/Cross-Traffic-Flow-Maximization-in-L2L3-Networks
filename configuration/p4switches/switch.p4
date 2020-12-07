@@ -155,6 +155,16 @@ parser MyParser(packet_in packet,
     //parse udp header as hosts send UDP flows
     state parse_udp {
         packet.extract(hdr.udp);
+        transition select(hdr.udp.dstPort){
+            // bfd packets arrive at udp port 3784
+            3784: parse_bfd;
+            default: accept;
+        }
+    }
+
+    // parse the bfd header
+    state parse_bfd {
+        packet.extract(hdr.bfd);
         transition accept;
     }
 
@@ -188,7 +198,7 @@ control MyIngress(inout headers hdr,
     }
 
     //********************** ADD FOR LFA********************
-        // Register to look up the port of the default next hop.
+    // Register to look up the port of the default next hop.
     register<bit<PORT_WIDTH>>(N_PREFS) primaryNH;
     register<bit<PORT_WIDTH>>(N_PREFS) alternativeNH; 
 
@@ -254,10 +264,10 @@ control MyIngress(inout headers hdr,
         hash(meta.flowlet_register_index, HashAlgorithm.crc16,
             (bit<16>)0,
             { hdr.ipv4.srcAddr,
-	      hdr.ipv4.dstAddr,
-	      hdr.udp.srcPort,
-              hdr.udp.dstPort
-	     ,hdr.ipv4.protocol},
+            hdr.ipv4.dstAddr,
+            hdr.udp.srcPort,
+            hdr.udp.dstPort,
+            hdr.ipv4.protocol},
             (bit<14>)8192);
 
          //Read the previous time stamp
@@ -278,17 +288,17 @@ control MyIngress(inout headers hdr,
     }
 
 
-  //action to compute the ecmp group for next hop
+    //action to compute the ecmp group for next hop
     action ecmp_group(bit<14> ecmp_group_id, bit<16> num_nhops){
         hash(meta.ecmp_hash,
             HashAlgorithm.crc16,
             (bit<1>)0,
-            { hdr.ipv4.srcAddr,
-              hdr.ipv4.dstAddr,
-              hdr.udp.srcPort,
-              hdr.udp.dstPort,
-              hdr.ipv4.protocol,
-              meta.flowlet_id},
+            {hdr.ipv4.srcAddr,
+            hdr.ipv4.dstAddr,
+            hdr.udp.srcPort,
+            hdr.udp.dstPort,
+            hdr.ipv4.protocol,
+            meta.flowlet_id},
             num_nhops);
 
             meta.ecmp_group_id = ecmp_group_id;
@@ -368,8 +378,7 @@ control MyIngress(inout headers hdr,
         if (hdr.ipv4.isValid()){
 
             // if the packet is a bsd packet, send it to the controller
-            // TOS=192 converted to DSCP should be 48
-            if(hdr.ipv4.dscp == 48){
+            if(hdr.bfd.isValid()){
                 clone(CloneType.I2E, 100);
             }
 

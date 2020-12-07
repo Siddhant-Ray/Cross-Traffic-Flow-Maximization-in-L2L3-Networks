@@ -26,8 +26,10 @@ from networkx.algorithms import all_pairs_dijkstra
 from p4utils.utils.topology import Topology
 from p4utils.utils.sswitch_API import SimpleSwitchAPI
 
-from scapy.all import sniff
+from scapy.all import sniff, IP, Ether, UDP, sendp
 from scapy.contrib.bfd import BFD
+import threading
+import time
 
 
 class Controller(object):
@@ -47,6 +49,10 @@ class Controller(object):
         self.controllers = {}
         self._connect_to_switches()
         self._reset_states()
+
+        # bfd implementation
+        self.ip_lookup_table = {}
+        self.populate_ip_lookup_table()
         self.add_mirrors()
 
         # Start main loop
@@ -100,8 +106,33 @@ class Controller(object):
         self.LFA_flag = 0  #This is changed when there was a change in status of at least one link
         # self.i_test = 0
 
-        self.run_cpu_port_loop()
+        # all those have to run in parallel, thus we are using threads
+        # each functions would be blocking otherwise
+        sniffing = threading.Thread(target=self.sniff_bfd_packets)
+        sniffing.daemon = True
+        sniffing.start()
 
+        heartbeat = threading.Thread(
+            target=self.send_heartbeat_between_switches)
+        heartbeat.daemon = True
+        heartbeat.start()
+
+        time.sleep(2)
+
+        links = threading.Thread(target=self.check_link_status)
+        links.daemon = True
+        links.start()
+
+        interfaces = threading.Thread(
+            target=self.check_interface_and_trigger_lfa)
+        interfaces.daemon = True
+        interfaces.start()
+
+        # keeping main thread alive so others dont get killed
+        while True:
+            time.sleep(1)
+
+    def check_interface_and_trigger_lfa(self):
         while (True):
             self.check_interface_status(
             )  #Function that still needs to be written, that updates
@@ -280,7 +311,7 @@ class Controller(object):
         self.LFA_flag = 0  #This flag gets raised if there was a transition in the heartbeat register
 
         for link in self.heartbeat_register:
-            status = self.heartbeat_register[link]
+            status = self.heartbeat_register[link]['status']
             current_reg_value = self.links_states[link]
 
             heartbeat_state = "down" if status == 0 else "up"  #For now, assume that heartbeat  is 0 or 1
@@ -378,8 +409,10 @@ class Controller(object):
         for link in self.accessible_links:
             self.links_states[
                 link] = "up"  # This register is for the controller itself
-            self.heartbeat_register[
-                link] = 1  #This register is updated continously by the heartbeat message
+            self.heartbeat_register[link] = {
+                'count': 0,
+                'status': 1
+            }  #This register is updated continously by the heartbeat message
         print("Registers installed")
 
     def setup_link_map(self):
@@ -594,20 +627,32 @@ class Controller(object):
             cpu_port = self.topo.get_cpu_port_index(switch)
             self.controllers[switch].mirroring_add(base_session_id, cpu_port)
 
-    def recv_msg_cpu(self, pkt):
+    def update_heartbeat_register(self, pkt):
+        """Update the heartbeat register according to incoming packets.
 
-        print("received packet")
-        # bfd_packet = BFD(str(pkt))
-        # print(bfd_packet.show())
+        :param pkt: an incoming bfd packet
+        :type pkt: bfd packet
+        """
 
-        print(pkt.summary())
+        src_address = pkt[IP].src
+        dst_address = pkt[IP].dst
 
-        # packet = Ether(str(pkt))
-        # if packet.type == 0x1234:
-        #     cpu_header = CpuHeader(bytes(packet.payload))
-        #     # self.learn([(cpu_header.macAddr, cpu_header.ingress_port)])
+        src_node = self.ip_lookup_table[src_address]
+        dst_node = self.ip_lookup_table[dst_address]
 
-    def run_cpu_port_loop(self):
+        try:
+            # increase the counter
+            self.heartbeat_register[(src_node, dst_node)]['count'] += 1
+            # and set the link state to up
+            self.heartbeat_register[(src_node, dst_node)]['status'] = 1
+        except KeyError as e:
+            # if the key is the other way around
+            self.heartbeat_register[(dst_node, src_node)]['count'] += 1
+            self.heartbeat_register[(dst_node, src_node)]['status'] = 1
+
+    def sniff_bfd_packets(self):
+        """Sniff on the CPU ports for BFD packets.
+        """
 
         # get the names of all p4 cpu interface
         cpu_port_interfaces = [
@@ -615,14 +660,99 @@ class Controller(object):
             for switch in self.topo.get_p4switches().keys()
         ]
 
-        print(cpu_port_interfaces)
+        #sniff on all cpu port interfaces
+        sniff(
+            iface=cpu_port_interfaces,
+            prn=self.update_heartbeat_register,
+            lfilter=lambda x: x.haslayer(BFD),
+        )
 
-        #while true loop
+    def send_heartbeat_between_switches(self):
+        """Send hearbeats between switch to switch links.
+        """
 
-        # send hellos to switches
-        # sniff the cpu port
-        sniff(iface=cpu_port_interfaces, prn=self.recv_msg_cpu)
-        # update dictionary
+        while (True):
+            # send heartbeat between S6-S1
+            sent_package = sendp(
+                Ether(dst='fa:70:22:e3:dd:c9',
+                      src='00:00:01:00:00:01',
+                      type=2048) /
+                IP(version=4, tos=192, dst='1.0.0.1', proto=17,
+                   src='6.0.0.1') / UDP(sport=49155, dport=3784, len=32) /
+                BFD(version=1,
+                    diag=0,
+                    your_discriminator=2025488576,
+                    flags=32,
+                    my_discriminator=1,
+                    echo_rx_interval=50000,
+                    len=24,
+                    detect_mult=3,
+                    min_tx_interval=50000,
+                    min_rx_interval=50000,
+                    sta=1),
+                iface='1-S6-cpu',
+            )
+
+            # send heartbeat between S4-S3
+            sent_package = sendp(
+                Ether(dst=' b2:32:83:50:66:b',
+                      src='00:00:01:00:00:01',
+                      type=2048) /
+                IP(version=4, tos=192, dst='3.0.0.1', proto=17,
+                   src='4.0.0.1') / UDP(sport=49155, dport=3784, len=32) /
+                BFD(version=1,
+                    diag=0,
+                    your_discriminator=2025488576,
+                    flags=32,
+                    my_discriminator=1,
+                    echo_rx_interval=50000,
+                    len=24,
+                    detect_mult=3,
+                    min_tx_interval=50000,
+                    min_rx_interval=50000,
+                    sta=1),
+                iface='1-S4-cpu',
+                inter=0.5)
+
+            time.sleep(0.5)
+
+    def populate_ip_lookup_table(self):
+        self.ip_lookup_table = {
+            '1.0.0.1': u'S1',
+            '2.0.0.1': u'S2',
+            '3.0.0.1': u'S3',
+            '4.0.0.1': u'S4',
+            '5.0.0.1': u'S5',
+            '6.0.0.1': u'S6',
+            '1.0.0.2': u'R1',
+            '6.0.0.3': u'R1',
+            '2.0.0.2': u'R1',
+            '2.0.0.3': u'R2',
+            '3.0.0.2': u'R2',
+            '4.0.0.3': u'R2',
+            '3.0.0.3': u'R3',
+            '4.0.0.2': u'R3',
+            '5.0.0.3': u'R3',
+            '1.0.0.3': u'R4',
+            '6.0.0.2': u'R3',
+            '5.0.0.2': u'R3',
+        }
+
+    def check_link_status(self):
+
+        while (True):
+
+            # check for every link
+            for link in self.heartbeat_register:
+                # if we sniffed a bfd packet
+                if self.heartbeat_register[link]['count'] == 0:
+                    # if not, set the link status to 0
+                    self.heartbeat_register[link]['status'] = 0
+                else:
+                    # if, reset the count to 0 for the next epoch
+                    self.heartbeat_register[link]['count'] = 0
+
+            time.sleep(2)
 
 
 if __name__ == "__main__":

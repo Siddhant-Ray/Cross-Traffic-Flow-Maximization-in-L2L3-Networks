@@ -26,6 +26,15 @@ exit
 peer 10.6.0.1 interface port_R3
 receive-interval 50
 transmit-interval 50
+peer 1.0.0.1 interface port_S1
+receive-interval 50
+transmit-interval 50
+peer 5.0.0.1 interface port_S5
+receive-interval 50
+transmit-interval 50
+peer 6.0.0.1 interface port_S6
+receive-interval 50
+transmit-interval 50
 exit
 exit
 
