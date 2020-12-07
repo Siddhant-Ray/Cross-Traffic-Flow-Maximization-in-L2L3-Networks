@@ -429,7 +429,7 @@ Executes all `.sh` scripts in the `configuration/` directory on the respective n
 
 By default, all nodes are configured in parallel, to avoid situations where one node blocks another.
 Also, all output is hidden by default, as lines from any configuration would show up intermingled and hard to match to a specific node.
-As this can make debugging difficult, you can provide the `--conf-debug` flag.
+As this can make debugging difficult, you can provide the `--debug-conf` flag.
 This flag forced the nodes to be configured one after another, and displays all output.
 
 
