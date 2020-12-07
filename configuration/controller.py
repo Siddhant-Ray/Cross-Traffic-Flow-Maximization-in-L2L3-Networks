@@ -627,6 +627,9 @@ class Controller(object):
     ####################### LFA INSTALL ################################
 
     def add_mirrors(self):
+        """Add mirrors for the data plane to communicate with the control plane.
+        """
+
         base_session_id = 100
         for switch in self.topo.get_p4switches().keys():
             cpu_port = self.topo.get_cpu_port_index(switch)
@@ -639,9 +642,11 @@ class Controller(object):
         :type pkt: bfd packet
         """
 
+        # extract src and dst ip addresses
         src_address = pkt[IP].src
         dst_address = pkt[IP].dst
 
+        # convert addresses to names to insert into the heartbeat_register
         src_node = self.ip_lookup_table[src_address]
         dst_node = self.ip_lookup_table[dst_address]
 
@@ -666,7 +671,8 @@ class Controller(object):
                 for switch in self.topo.get_p4switches().keys()
             ]
 
-            #sniff on all cpu port interfaces
+            # sniff on all cpu port interfaces for bfd packets
+            # and invoke the update_heartbeat_register function on each packet
             sniff(
                 iface=cpu_port_interfaces,
                 prn=self.update_heartbeat_register,
@@ -727,12 +733,15 @@ class Controller(object):
                                      iface='1-S4-cpu',
                                      verbose=False)
 
+                # send the heartbeat packets every 0.5 seconds
                 time.sleep(0.5)
             except (KeyboardInterrupt, SystemExit):
                 print("Exiting...")
                 break
 
     def populate_ip_lookup_table(self):
+        """Populates a table that maps IP addresses to names.
+        """
         self.ip_lookup_table = {
             '1.0.0.1': u'S1',
             '2.0.0.1': u'S2',
@@ -755,9 +764,10 @@ class Controller(object):
         }
 
     def check_link_status(self):
+        """Checks the status of each link. If there hasn't been received a packet in 2 seconds, consider the link as down.
+        """
 
         while (True):
-            print(self.heartbeat_register)
 
             try:
                 # check for every link
@@ -769,9 +779,12 @@ class Controller(object):
                         self.heartbeat_register[link]['status'] = 0
                     else:
                         # if, reset the count to 0 for the next epoch
+                        # setting the status to 1 if its up again happens
+                        # immediately in update_heartbeat_register
                         self.heartbeat_register[link]['count'] = 0
 
-                time.sleep(2)
+                # wait 1.5 seconds before checking again as the heartbeat is currently sent every 1s
+                time.sleep(1.5)
             except (KeyboardInterrupt, SystemExit):
                 print("Exiting...")
                 break
