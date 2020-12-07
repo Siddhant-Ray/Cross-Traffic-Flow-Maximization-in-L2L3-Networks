@@ -28,6 +28,7 @@ from p4utils.utils.sswitch_API import SimpleSwitchAPI
 
 from scapy.all import sniff, IP, Ether, UDP, sendp
 from scapy.contrib.bfd import BFD
+from multiprocessing import Process
 import threading
 import time
 
@@ -134,9 +135,13 @@ class Controller(object):
 
     def check_interface_and_trigger_lfa(self):
         while (True):
-            self.check_interface_status(
-            )  #Function that still needs to be written, that updates
-            self.trigger_lfa()
+            try:
+                self.check_interface_status(
+                )  #Function that still needs to be written, that updates
+                self.trigger_lfa()
+            except (KeyboardInterrupt, SystemExit):
+                print("Exiting...")
+                break
 
     def add_l2_forwarding_rules(self):
         """Add L2 forwarding groups to all switches.
@@ -654,67 +659,79 @@ class Controller(object):
         """Sniff on the CPU ports for BFD packets.
         """
 
-        # get the names of all p4 cpu interface
-        cpu_port_interfaces = [
-            self.topo.get_cpu_port_intf(switch)
-            for switch in self.topo.get_p4switches().keys()
-        ]
+        try:
+            # get the names of all p4 cpu interface
+            cpu_port_interfaces = [
+                self.topo.get_cpu_port_intf(switch)
+                for switch in self.topo.get_p4switches().keys()
+            ]
 
-        #sniff on all cpu port interfaces
-        sniff(
-            iface=cpu_port_interfaces,
-            prn=self.update_heartbeat_register,
-            lfilter=lambda x: x.haslayer(BFD),
-        )
+            #sniff on all cpu port interfaces
+            sniff(
+                iface=cpu_port_interfaces,
+                prn=self.update_heartbeat_register,
+                lfilter=lambda x: x.haslayer(BFD),
+            )
+        except (KeyboardInterrupt, SystemExit):
+            print("Exiting...")
 
     def send_heartbeat_between_switches(self):
         """Send hearbeats between switch to switch links.
         """
 
         while (True):
-            # send heartbeat between S6-S1
-            sent_package = sendp(
-                Ether(dst='fa:70:22:e3:dd:c9',
-                      src='00:00:01:00:00:01',
-                      type=2048) /
-                IP(version=4, tos=192, dst='1.0.0.1', proto=17,
-                   src='6.0.0.1') / UDP(sport=49155, dport=3784, len=32) /
-                BFD(version=1,
-                    diag=0,
-                    your_discriminator=2025488576,
-                    flags=32,
-                    my_discriminator=1,
-                    echo_rx_interval=50000,
-                    len=24,
-                    detect_mult=3,
-                    min_tx_interval=50000,
-                    min_rx_interval=50000,
-                    sta=1),
-                iface='1-S6-cpu',
-            )
+            try:
+                # send heartbeat between S6-S1
+                sent_package = sendp(
+                    Ether(dst='fa:70:22:e3:dd:c9',
+                          src='00:00:01:00:00:01',
+                          type=2048) / IP(version=4,
+                                          tos=192,
+                                          dst='1.0.0.1',
+                                          proto=17,
+                                          src='6.0.0.1') /
+                    UDP(sport=49155, dport=3784, len=32) /
+                    BFD(version=1,
+                        diag=0,
+                        your_discriminator=2025488576,
+                        flags=32,
+                        my_discriminator=1,
+                        echo_rx_interval=50000,
+                        len=24,
+                        detect_mult=3,
+                        min_tx_interval=50000,
+                        min_rx_interval=50000,
+                        sta=1),
+                    iface='1-S6-cpu',
+                )
 
-            # send heartbeat between S4-S3
-            sent_package = sendp(
-                Ether(dst=' b2:32:83:50:66:b',
-                      src='00:00:01:00:00:01',
-                      type=2048) /
-                IP(version=4, tos=192, dst='3.0.0.1', proto=17,
-                   src='4.0.0.1') / UDP(sport=49155, dport=3784, len=32) /
-                BFD(version=1,
-                    diag=0,
-                    your_discriminator=2025488576,
-                    flags=32,
-                    my_discriminator=1,
-                    echo_rx_interval=50000,
-                    len=24,
-                    detect_mult=3,
-                    min_tx_interval=50000,
-                    min_rx_interval=50000,
-                    sta=1),
-                iface='1-S4-cpu',
-                inter=0.5)
+                # send heartbeat between S4-S3
+                sent_package = sendp(Ether(dst=' b2:32:83:50:66:b',
+                                           src='00:00:01:00:00:01',
+                                           type=2048) / IP(version=4,
+                                                           tos=192,
+                                                           dst='3.0.0.1',
+                                                           proto=17,
+                                                           src='4.0.0.1') /
+                                     UDP(sport=49155, dport=3784, len=32) /
+                                     BFD(version=1,
+                                         diag=0,
+                                         your_discriminator=2025488576,
+                                         flags=32,
+                                         my_discriminator=1,
+                                         echo_rx_interval=50000,
+                                         len=24,
+                                         detect_mult=3,
+                                         min_tx_interval=50000,
+                                         min_rx_interval=50000,
+                                         sta=1),
+                                     iface='1-S4-cpu',
+                                     inter=0.5)
 
-            time.sleep(0.5)
+                time.sleep(0.5)
+            except (KeyboardInterrupt, SystemExit):
+                print("Exiting...")
+                break
 
     def populate_ip_lookup_table(self):
         self.ip_lookup_table = {
@@ -742,17 +759,21 @@ class Controller(object):
 
         while (True):
 
-            # check for every link
-            for link in self.heartbeat_register:
-                # if we sniffed a bfd packet
-                if self.heartbeat_register[link]['count'] == 0:
-                    # if not, set the link status to 0
-                    self.heartbeat_register[link]['status'] = 0
-                else:
-                    # if, reset the count to 0 for the next epoch
-                    self.heartbeat_register[link]['count'] = 0
+            try:
+                # check for every link
+                for link in self.heartbeat_register:
+                    # if we sniffed a bfd packet
+                    if self.heartbeat_register[link]['count'] == 0:
+                        # if not, set the link status to 0
+                        self.heartbeat_register[link]['status'] = 0
+                    else:
+                        # if, reset the count to 0 for the next epoch
+                        self.heartbeat_register[link]['count'] = 0
 
-            time.sleep(2)
+                time.sleep(2)
+            except (KeyboardInterrupt, SystemExit):
+                print("Exiting...")
+                break
 
 
 if __name__ == "__main__":
