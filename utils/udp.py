@@ -6,7 +6,7 @@ import math
 MTU = 1500
 # min udp packet size
 minSizeUDP = 42
-maxUDPSize = MTU-28
+maxUDPSize = 1400
 DEFAULT_BATCH_SIZE = 1
 
 

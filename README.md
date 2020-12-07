@@ -97,6 +97,9 @@ The `default.traffic` scenario is defined as follows:
     Intuitively, gold traffic matters most, followed by silver, then bronze.
     Hosts will indicate the class of their traffic using the `TOS` field in the IP header: 128 for gold, 64 for silver, 32 for bronze.
 
+-  UDP packets payload won't be bigger than 1400 Bytes (but can be lower). That means, adding `ethernet`, `ip`, `udp` headers, sent packets
+   won't be bigger than 1442 bytes. 
+
 There are other traffic scenarios to test your configuration.
 They do not necessarily follow the specification above, but might be helpful to test your configuration.
 
@@ -426,7 +429,7 @@ Executes all `.sh` scripts in the `configuration/` directory on the respective n
 
 By default, all nodes are configured in parallel, to avoid situations where one node blocks another.
 Also, all output is hidden by default, as lines from any configuration would show up intermingled and hard to match to a specific node.
-As this can make debugging difficult, you can provide the `--conf-debug` flag.
+As this can make debugging difficult, you can provide the `--debug-conf` flag.
 This flag forced the nodes to be configured one after another, and displays all output.
 
 
@@ -526,7 +529,7 @@ python3 -i udp.py
 
 #### How can I configure feature X from the lecture in FRRouting?
 
-FRRouting does not support everything you have seen during the lecture, or some features that you have seen in configuration examples for real routers. Check the [FRRouting Documentation](http://docs.frrouting.org/en/latest/index.html) to see which features are available. To safe yourselves some time searching, we collect known limitations below:
+FRRouting does not support everything you have seen during the lecture, or some features that you have seen in configuration examples for real routers. Check the [FRRouting Documentation](http://docs.frrouting.org/en/stable-7.2/) to see which features are available. To safe yourselves some time searching, we collect known limitations below:
 OSPF does not support LFAs (loop-free alternates).
 
 #### The routers do not forward MPLS packets although I have configured them to do so.

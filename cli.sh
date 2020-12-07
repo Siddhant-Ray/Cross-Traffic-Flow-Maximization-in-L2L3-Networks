@@ -38,7 +38,10 @@ Flags:
 EOM
 )
 
+
 # EXIT CODES
+# ==========
+
 # 0 Success.
 # 1 Unexpected error.
 # 2 User error (bad config, controller, p4 code).
@@ -47,8 +50,24 @@ error=1
 usererror=2
 ioerror=3
 
-# Declare a map of shortcuts for easier access.
-# Associative arrays in bash: https://stackoverflow.com/a/3467959
+
+# JOB MANAGEMENT
+# ==============
+
+# https://stackoverflow.com/a/52126776
+if [ -z "$(printenv PGID)" ]; then
+    pgid=$(($(ps -o pgid= -p "$$")))
+    if [ $$ -eq $pgid ]; then
+        export PGID=$pgid 
+    else
+        exec setsid --wait "${BASH_SOURCE[0]}" "$@" 
+    fi
+fi
+
+
+# SHORTCUTS
+# =========
+
 declare -A shortcuts=(
     # Shortcut: container name
     ["r1"]="1_R1router"
@@ -70,6 +89,9 @@ declare -A shortcuts=(
 )
 
 
+# COMMAND LINE OPTIONS
+# ====================
+
 # Check for special flags and remove them from argument list.
 p4flags="--log"
 buildflags="--opt"
@@ -90,6 +112,10 @@ if [ $# -lt 1 ]; then
     exit $ioerror
 fi
 
+
+# DIRECTORIES
+# ===========
+
 # Get the current script directory, no matter where we are called from.
 # https://stackoverflow.com/questions/59895/how-to-get-the-source-directory-of-a-bash-script-from-within-the-script-itself
 cur_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
@@ -101,7 +127,9 @@ config_dir="$cur_dir/configuration"
 scenario_dir="$cur_dir/scenarios"
 default_scenario="default"
 
-# Functions pointing the the individual scripts.
+
+# FUNCTIONS
+# =========
 
 function clean
 {
@@ -164,7 +192,7 @@ function configure  # routers/p4switches RX
         echo "Configuring \`$container\` using \`$script\`"
         sudo docker cp $full_script $container:/home/
         sudo docker exec -t $container chmod 755 /home/$script
-        sudo docker exec -t $container /bin/sh /home/$script || return $usererror
+        sudo docker exec -t $container /bin/bash /home/$script || return $usererror
     else
         return $ioerror
     fi
@@ -227,7 +255,7 @@ function run
     (cd $cur_dir/utils && sudo nice -n -20 python2 orchestrate.py --topo=$topo --traffic-spec=$trafficpath --failure-spec=$failurepath)
 
     # Check run performance 
-    (cd $cur_dir/utils &&  python performance.py --traffic-spec=$trafficpath)   
+    (cd $cur_dir/utils && python performance.py --traffic-spec=$trafficpath)   
 }
 
 function pipeline
@@ -247,11 +275,16 @@ function pipeline
     controller $@ & controllerpid=$!
 
     wait $runpid || return $error
- 
+
     # The controller might loop -> kill it if it's still running.
-    if ! kill $controllerpid > /dev/null 2>&1; then
+    if ! kill -SIGTERM $controllerpid > /dev/null 2>&1; then
         # Controller was not running, check output code to see if it crashed.
         wait $controllerpid || return $usererror
+    else
+        echo
+        echo "Controller is still running, shutting it down"
+        trap 'exit 0' SIGTERM  # Main shell is also terminated, ensure code 0.
+        sudo kill -SIGTERM -- -$pgid
     fi
 }
 
@@ -313,6 +346,7 @@ function list-scenarios
 }
 
 # Actually do something :)
+# ========================
 
 case $1 in
     "build") build ;;
