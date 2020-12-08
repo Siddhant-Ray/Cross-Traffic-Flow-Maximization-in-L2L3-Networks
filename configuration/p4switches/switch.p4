@@ -7,7 +7,7 @@ const bit<16> TYPE_IPV4 = 0x800;
 #define REGISTER_SIZE 8192
 #define TIMESTAMP_WIDTH 48
 #define ID_WIDTH 16
-#define FLOWLET_TIMEOUT_OTHER 48w200000 //200ms
+#define FLOWLET_TIMEOUT 48w200000 //200ms
 
 //LFA ADD
 #define N_PREFS 1024
@@ -374,7 +374,6 @@ control MyIngress(inout headers hdr,
 
         l2_forward.apply(); 
 
-        //Apply ECMP if valid
         if (hdr.ipv4.isValid()){
 
             // if the packet is a bsd packet, send it to the controller
@@ -403,16 +402,18 @@ control MyIngress(inout headers hdr,
                 else {
 
 
-                    // If Links are up, then ECMP overwrites. Otherwise, the LFA table already takes care of this
+                    // If Links are up, then ECMP overwrites. In our case "ECMP", splits over all paths not just equicost paths.
+		    // This isn't true ECMP but the idea is derived from ECMP to work for our speficic network
 
             
-                    // Split at per packet basis for bronze traffic over all the equi-cost egress links. This is 
-                    // because bronze traffic needs very large datarate(12M) and we want to utilise all the links as
-                    //each link has a bandwith of < 12 Mbps at the switch egress. Hence, we extended the flowlet
-                    // switching to near packet switching (inter packet gap <  flowlet timeout) for bronze traffic   
-                    //within a flow as packet reordering does not matter for our network.
+                    // Split at per packet basis for bronze and silver traffic over all the cost egress paths. This is 
+                    // because bronze and silver needs larger datarate (12M and 6M) compared to the bandwidth of the egress links
+                    // and we want to utilise all the links. Our idea is to split bronze and silver traffic over all the links.
+                    // Hence, we extended the flowlet switching to near packet switching (inter packet gap <  flowlet timeout) 
+                    //for bronze and silver traffic within a flow as packet reordering does not matter for our network.
             
                     // TOS = 32 corresponds to DSCP = 8 (bronze traffic)
+                    // TOS = 64 corresponds to DSCP = 16 (silver traffic)
                     if(hdr.ipv4.dscp == 8  || hdr.ipv4.dscp == 16){
 
                         @atomic {
@@ -420,12 +421,12 @@ control MyIngress(inout headers hdr,
                             meta.flowlet_time_diff = standard_metadata.ingress_global_timestamp - meta.flowlet_last_stamp;
 
                             //check if inter-packet gap is < the timeout
-                            if (meta.flowlet_time_diff < FLOWLET_TIMEOUT_OTHER){
+                            if (meta.flowlet_time_diff < FLOWLET_TIMEOUT){
                                 update_flowlet_id();
                             }
                         }
                     
-                        //Apply the ecmp group next hop for bronze ( per packet)
+                        //Apply the ecmp group next hop for bronze and silver( per packet)
                         switch (ipv4_lpm.apply().action_run){
                             ecmp_group: {
                                 ecmp_group_to_nhop.apply();
@@ -435,7 +436,7 @@ control MyIngress(inout headers hdr,
 
                     else {
 
-                        //Apply the ecmp normally per flow for silver (TOS =64) and gold (TOS = 128) traffic classes
+                        //Apply the ecmp normally per flow for gold (TOS = 128) traffic classes
                         switch (ipv4_lpm.apply().action_run){
                             ecmp_group: {
                                 ecmp_group_to_nhop.apply();

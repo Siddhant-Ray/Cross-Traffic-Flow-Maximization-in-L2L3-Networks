@@ -195,7 +195,13 @@ class Controller(object):
             controller.table_set_default("ecmp_group_to_nhop", "drop", [])
 
     def ECMP_route(self):
-        """Populates the tables for ECMP"""
+        """Populates the tables for ECMP
+            
+            For our network, it really isn't true ECMP as we don't split over only paths of equal cost,
+            rather all paths of any cost. More details on this is given in the apply() section of the
+            switch.p4 program. We use the get_all_paths_between_switches of the topology object.
+
+        """
         switch_ecmp_groups = {
             sw_name: {}
             for sw_name in self.topo.get_p4switches().keys()
