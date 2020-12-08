@@ -413,7 +413,7 @@ control MyIngress(inout headers hdr,
                     //within a flow as packet reordering does not matter for our network.
             
                     // TOS = 32 corresponds to DSCP = 8 (bronze traffic)
-                    if(hdr.ipv4.dscp == 8){
+                    if(hdr.ipv4.dscp == 8  || hdr.ipv4.dscp == 16){
 
                         @atomic {
                             read_flowlet_registers();

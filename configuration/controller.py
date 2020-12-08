@@ -221,7 +221,7 @@ class Controller(object):
                 #Check if there are directly connected hosts
                 else:
                     if self.topo.get_hosts_connected_to(sw_dst):
-                        paths = self.topo.get_shortest_paths_between_nodes(
+                        paths = self.topo.get_all_paths_between_nodes(
                             sw_name, sw_dst)
                         for host in self.topo.get_hosts_connected_to(sw_dst):
 
