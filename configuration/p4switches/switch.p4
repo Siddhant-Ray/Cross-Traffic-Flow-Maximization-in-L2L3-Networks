@@ -381,25 +381,8 @@ control MyIngress(inout headers hdr,
                 clone(CloneType.I2E, 100);
             }
 
-            //********************** ADD FOR LFA********************
-            // Since we already have a next hop routine, I am injecting code into that action which is triggered 
-            // only by the Linkstate being down.
-            // The Linkstate update call is done here and then it should just trigger in that action. If that fails,
-            // we may have to add an action in the switch just for next hop.
 
             else {
-
-                dst_index.apply(); //This checks if the link to the nextHop is up
-
-                if (meta.linkState > 0){ 
-
-                    //If the link is down, trigger the LFA code
-
-                    read_alternativePort();
-                    rewrite_mac.apply();
-                }
-            
-                else {
 
 
                     // If Links are up, then ECMP overwrites. In our case "ECMP", splits over all paths not just equicost paths.
@@ -435,8 +418,32 @@ control MyIngress(inout headers hdr,
                     }
 
                     else {
+			
+			// Now we take the case of TOS = 128 (gold)
+			//********************** ADD FOR LFA********************	
+			
+			// For gold traffic, we only split per flow for different paths 
+			// as the data rate (1M) is less than the bandwidth of every
+			// possible link
 
-                        //Apply the ecmp normally per flow for gold (TOS = 128) traffic classes
+			// We configure an LFA just for gold traffic as it is not split
+			// there are backup links available for gold traffic
+			
+ 
+		 	dst_index.apply(); //This checks if the link to the nextHop is up
+
+                	if (meta.linkState == 1){
+
+                     	//If the link is down, trigger the LFA code
+
+                    	read_alternativePort();
+                    	rewrite_mac.apply();
+                        }	
+
+                	else {
+
+                        // Apply the "our ecmp"  per flow for gold (TOS = 128) 
+		        // traffic classes
                         switch (ipv4_lpm.apply().action_run){
                             ecmp_group: {
                                 ecmp_group_to_nhop.apply();
@@ -444,7 +451,7 @@ control MyIngress(inout headers hdr,
                         }
                     }
                 }	
-            }
+           } 
         } 
     }
 }
