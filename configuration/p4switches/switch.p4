@@ -14,6 +14,9 @@ const bit<16> TYPE_IPV4 = 0x800;
 #define PORT_WIDTH 32
 #define N_PORTS 512
 
+//Bandwidth
+#define BW 1
+
 /*************************************************************************
 *********************** H E A D E R S  ***********************************
 *************************************************************************/
@@ -108,6 +111,9 @@ struct metadata {
     bit<1> linkState;
     bit<32> nextHop;
     bit<32> index;
+
+    //Metadata for bandwidth 
+    bit<1> Bandwidth;
 }
 
 struct headers {
@@ -206,6 +212,8 @@ control MyIngress(inout headers hdr,
     // This register is updated by CLI.py, you only need to read from it.
     register<bit<1>>(N_PORTS) linkState;
 
+    // Register for reading bandwidth 
+    register<bit<1>>(N_PORTS) Bandwidth;
 
     action query_nextLink(bit<32>  index){ //Queries LinkState
         meta.index = index;
@@ -214,6 +222,14 @@ control MyIngress(inout headers hdr,
         
         //Read linkState of default next hop.
         linkState.read(meta.linkState, meta.nextHop);
+    }
+
+    // Action to read bandwidth
+    action read_bandwidth(bit<32>  index){
+
+        meta.index = index;
+        // Read value and write the data into the meta.Bandwidth
+        Bandwidth.read(meta.Bandwidth, meta.index);
     }
     
     action read_alternativePort(){ //Called when Link is down to find LFA
@@ -397,7 +413,8 @@ control MyIngress(inout headers hdr,
             
                     // TOS = 32 corresponds to DSCP = 8 (bronze traffic)
                     // TOS = 64 corresponds to DSCP = 16 (silver traffic)
-                    if(hdr.ipv4.dscp == 8  || hdr.ipv4.dscp == 16){
+                    if (meta.Bandwidth == 1){
+                    //if(hdr.ipv4.dscp == 8  || hdr.ipv4.dscp == 16){
 
                         @atomic {
                             read_flowlet_registers();

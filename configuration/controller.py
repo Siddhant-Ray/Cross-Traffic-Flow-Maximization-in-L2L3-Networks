@@ -80,6 +80,7 @@ class Controller(object):
             dialect = csv.Sniffer().sniff(csvfile.read(1024))
             csvfile.seek(0)
             reader = csv.DictReader(csvfile, dialect=dialect)
+
             return list(reader)
 
     # Controller methods.
@@ -90,6 +91,9 @@ class Controller(object):
         # Initialization of L2 forwarding. Feel free to modify.
         self.create_l2_multicast_group()
         self.add_l2_forwarding_rules()
+
+        #Use the traffic matrix
+        self.compute_bandwidth_for_traffic_split()
 
         #Call ECMP route
         self.ECMP_route()
@@ -132,6 +136,35 @@ class Controller(object):
         # keeping main thread alive so others dont get killed
         while True:
             time.sleep(1)
+
+    def compute_bandwidth_for_traffic_split(self):
+
+        #Get traffic matrix
+        traffic_list = self.traffic
+
+        #Get list of switches
+        list_of_switches = self.topo.get_p4switches().keys()
+        print list_of_switches
+
+        for switch in list_of_switches:
+
+            #Iterate over all fields of the traffic list
+            for item in traffic_list:
+
+                #Check if last digits of source matches switch i.e. source H1 means register in switch S1 should be filled
+                if item['src'][1] == str(switch)[1]:
+
+                    #Extracting the numeric part of the BW
+                    bandwidth = item['rate'][0:len(item['rate'])-1]
+                    print bandwidth
+
+                    #If bandwidth > 4, update register fot that switch 
+                    if int(bandwidth) > 4:
+
+                        control = self.controllers[switch]
+                        port = "1"
+                        state = "1"
+                        control.register_write('Bandwidth', port, state)   
 
     def check_interface_and_trigger_lfa(self):
         while (True):
