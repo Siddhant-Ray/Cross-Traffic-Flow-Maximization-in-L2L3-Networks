@@ -14,6 +14,12 @@ const bit<16> TYPE_IPV4 = 0x800;
 #define PORT_WIDTH 32
 #define N_PORTS 512
 
+<<<<<<< HEAD
+=======
+//Bandwidth
+#define BW 12
+
+>>>>>>> 5447b60... Working solution using traffic matrix
 /*************************************************************************
 *********************** H E A D E R S  ***********************************
 *************************************************************************/
@@ -206,6 +212,11 @@ control MyIngress(inout headers hdr,
     // This register is updated by CLI.py, you only need to read from it.
     register<bit<1>>(N_PORTS) linkState;
 
+<<<<<<< HEAD
+=======
+    // Register for reading bandwidth 
+    register<bit<1>>(BW) Bandwidth;
+>>>>>>> 5447b60... Working solution using traffic matrix
 
     action query_nextLink(bit<32>  index){ //Queries LinkState
         meta.index = index;
@@ -397,7 +408,15 @@ control MyIngress(inout headers hdr,
             
                     // TOS = 32 corresponds to DSCP = 8 (bronze traffic)
                     // TOS = 64 corresponds to DSCP = 16 (silver traffic)
-                    if(hdr.ipv4.dscp == 8  || hdr.ipv4.dscp == 16){
+
+                    // A more generic solution exists if the we don't check using the TOS field in the P4 code, rather use 
+                    // the traffic matrix to read the incoming datarates of the flows. If the incoming flow has a datarate
+                    // of  > 4 Mbps which is greater than the egress link bandwidth, we split the traffic all all the 
+                    //egress paths. The bandwidth register keeps a track of this and when set to 1, it splits the traffic.
+                    
+                    read_bandwidth( 0);
+                    if (meta.Bandwidth == 1){
+                    //if(hdr.ipv4.dscp == 8  || hdr.ipv4.dscp == 16){
 
                         @atomic {
                             read_flowlet_registers();
