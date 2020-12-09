@@ -162,11 +162,17 @@ class Controller(object):
                     if int(bandwidth) > 4:
 
                         control = self.controllers[switch]
+<<<<<<< HEAD
                         port = 0
                         state = 1
                         control.register_write('Bandwidth', port, state)
                         print control.register_read('Bandwidth')   
                         #time.sleep(2)
+=======
+                        port = "1"
+                        state = "1"
+                        control.register_write('Bandwidth', port, state)   
+>>>>>>> 162ea60ecaeffaf3403e0fc0a19b152731f3f8d2
 
     def check_interface_and_trigger_lfa(self):
         while (True):
