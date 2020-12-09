@@ -15,7 +15,7 @@ const bit<16> TYPE_IPV4 = 0x800;
 #define N_PORTS 512
 
 //Bandwidth
-#define BW 1
+#define BW 12
 
 /*************************************************************************
 *********************** H E A D E R S  ***********************************
@@ -213,7 +213,7 @@ control MyIngress(inout headers hdr,
     register<bit<1>>(N_PORTS) linkState;
 
     // Register for reading bandwidth 
-    register<bit<1>>(N_PORTS) Bandwidth;
+    register<bit<1>>(BW) Bandwidth;
 
     action query_nextLink(bit<32>  index){ //Queries LinkState
         meta.index = index;
@@ -401,7 +401,7 @@ control MyIngress(inout headers hdr,
             else {
 
 
-                    // If Links are up, then ECMP overwrites. In our case "ECMP", splits over all paths not just equicost paths.
+            // If Links are up, then ECMP is triggerd. In our case "ECMP", splits over all paths not just equicost paths.
 		    // This isn't true ECMP but the idea is derived from ECMP to work for our speficic network
 
             
@@ -413,6 +413,13 @@ control MyIngress(inout headers hdr,
             
                     // TOS = 32 corresponds to DSCP = 8 (bronze traffic)
                     // TOS = 64 corresponds to DSCP = 16 (silver traffic)
+
+                    // A more generic solution exists if the we don't check using the TOS field in the P4 code, rather use 
+                    // the traffic matrix to read the incoming datarates of the flows. If the incoming flow has a datarate
+                    // of  > 4 Mbps which is greater than the egress link bandwidth, we split the traffic all all the 
+                    //egress paths. The bandwidth register keeps a track of this and when set to 1, it splits the traffic.
+                    
+                    read_bandwidth( 0);
                     if (meta.Bandwidth == 1){
                     //if(hdr.ipv4.dscp == 8  || hdr.ipv4.dscp == 16){
 
@@ -445,6 +452,10 @@ control MyIngress(inout headers hdr,
 
 			// We configure an LFA just for gold traffic as it is not split
 			// there are backup links available for gold traffic
+
+            // If we use the second approach (splitting based on data-rate, not TOS),
+            // that we don't split the traffic for data rate <= 4 Mbps, 
+            // we put all the traffic on one link and if there is a failure, use an LFA.
 			
  
 		 	dst_index.apply(); //This checks if the link to the nextHop is up
@@ -460,7 +471,7 @@ control MyIngress(inout headers hdr,
                 	else {
 
                         // Apply the "our ecmp"  per flow for gold (TOS = 128) 
-		        // traffic classes
+		                // traffic classes
                         switch (ipv4_lpm.apply().action_run){
                             ecmp_group: {
                                 ecmp_group_to_nhop.apply();
