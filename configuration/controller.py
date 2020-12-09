@@ -31,6 +31,7 @@ from scapy.contrib.bfd import BFD
 from multiprocessing import Process
 import threading
 import time
+from random import randint
 
 
 class Controller(object):
@@ -111,8 +112,11 @@ class Controller(object):
         self.LFA_flag = 0  #This is changed when there was a change in status of at least one link
         # self.i_test = 0
 
+        # answer to the routers so that the bfd packets will be sent at a higher rate
+        self.init_bfd()
+
         # all those have to run in parallel, thus we are using threads
-        # each functions would be blocking otherwise
+        # every function would be blocking otherwise
         sniffing = threading.Thread(target=self.sniff_bfd_packets)
         sniffing.daemon = True
         sniffing.start()
@@ -122,7 +126,7 @@ class Controller(object):
         heartbeat.daemon = True
         heartbeat.start()
 
-        time.sleep(2)
+        time.sleep(1)
 
         links = threading.Thread(target=self.check_link_status)
         links.daemon = True
@@ -155,17 +159,17 @@ class Controller(object):
                 if item['src'][1] == str(switch)[1]:
 
                     #Extracting the numeric part of the BW
-                    bandwidth = item['rate'][0:len(item['rate'])-1]
+                    bandwidth = item['rate'][0:len(item['rate']) - 1]
                     print bandwidth
 
-                    #If bandwidth > 4, update register fot that switch 
+                    #If bandwidth > 4, update register fot that switch
                     if int(bandwidth) > 4:
 
                         control = self.controllers[switch]
                         port = 0
                         state = 1
                         control.register_write('Bandwidth', port, state)
-                        print control.register_read('Bandwidth')   
+                        print control.register_read('Bandwidth')
                         #time.sleep(2)
 
     def check_interface_and_trigger_lfa(self):
@@ -702,7 +706,7 @@ class Controller(object):
                 self.heartbeat_register[(dst_node, src_node)]['count'] += 1
                 self.heartbeat_register[(dst_node, src_node)]['status'] = 1
         except KeyError as e:
-            print("address not in lookup table")
+            pass
 
     def sniff_bfd_packets(self):
         """Sniff on the CPU ports for BFD packets.
@@ -731,51 +735,51 @@ class Controller(object):
 
         while (True):
             try:
+                # get the source and destination mac/ip adresses
+                src_mac = self.topo.node_to_node_mac('S6', 'S1')
+                dst_mac = self.topo.node_to_node_mac('S1', 'S6')
+
                 # send heartbeat between S6-S1
-                sent_package = sendp(Ether(dst='fa:70:22:e3:dd:c9',
-                                           src='00:00:01:00:00:01',
-                                           type=2048) / IP(version=4,
-                                                           tos=192,
-                                                           dst='1.0.0.1',
-                                                           proto=17,
-                                                           src='6.0.0.1') /
-                                     UDP(sport=49155, dport=3784, len=32) /
-                                     BFD(version=1,
-                                         diag=0,
-                                         your_discriminator=2025488576,
-                                         flags=32,
-                                         my_discriminator=1,
-                                         echo_rx_interval=50000,
-                                         len=24,
-                                         detect_mult=3,
-                                         min_tx_interval=50000,
-                                         min_rx_interval=50000,
-                                         sta=1),
-                                     iface='1-S6-cpu',
-                                     verbose=False)
+                sendp(Ether(dst=dst_mac, src=src_mac, type=2048) / IP(
+                    version=4, tos=192, dst='9.0.0.1', proto=17, src='9.0.0.6')
+                      / UDP(sport=49156, dport=3784, len=32) /
+                      BFD(version=1,
+                          diag=0,
+                          your_discriminator=0,
+                          flags=32,
+                          my_discriminator=15,
+                          echo_rx_interval=50000,
+                          len=24,
+                          detect_mult=3,
+                          min_tx_interval=250000,
+                          min_rx_interval=250000,
+                          sta=1),
+                      iface='1-S6-cpu',
+                      verbose=False)
+
+                # get the source and destination mac/ip adresses
+                src_mac = self.topo.node_to_node_mac('S4', 'S3')
+                dst_mac = self.topo.node_to_node_mac('S3', 'S4')
 
                 # send heartbeat between S4-S3
-                sent_package = sendp(Ether(dst=' b2:32:83:50:66:b',
-                                           src='00:00:01:00:00:01',
-                                           type=2048) / IP(version=4,
-                                                           tos=192,
-                                                           dst='3.0.0.1',
-                                                           proto=17,
-                                                           src='4.0.0.1') /
-                                     UDP(sport=49155, dport=3784, len=32) /
-                                     BFD(version=1,
-                                         diag=0,
-                                         your_discriminator=2025488576,
-                                         flags=32,
-                                         my_discriminator=1,
-                                         echo_rx_interval=50000,
-                                         len=24,
-                                         detect_mult=3,
-                                         min_tx_interval=50000,
-                                         min_rx_interval=50000,
-                                         sta=1),
-                                     iface='1-S4-cpu',
-                                     verbose=False)
+                sendp(Ether(
+                    dst=dst_mac, src=src_mac, type=2048
+                ) / IP(
+                    version=4, tos=192, dst='9.0.0.3', proto=17, src='9.0.0.4')
+                      / UDP(sport=49155, dport=3784, len=32) /
+                      BFD(version=1,
+                          diag=0,
+                          your_discriminator=0,
+                          flags=32,
+                          my_discriminator=14,
+                          echo_rx_interval=50000,
+                          len=24,
+                          detect_mult=3,
+                          min_tx_interval=250000,
+                          min_rx_interval=250000,
+                          sta=1),
+                      iface='1-S4-cpu',
+                      verbose=False)
 
                 # send the heartbeat packets every 0.5 seconds
                 time.sleep(0.5)
@@ -787,12 +791,12 @@ class Controller(object):
         """Populates a table that maps IP addresses to names.
         """
         self.ip_lookup_table = {
-            '1.0.0.1': u'S1',
-            '2.0.0.1': u'S2',
-            '3.0.0.1': u'S3',
-            '4.0.0.1': u'S4',
-            '5.0.0.1': u'S5',
-            '6.0.0.1': u'S6',
+            '9.0.0.1': u'S1',
+            '9.0.0.2': u'S2',
+            '9.0.0.3': u'S3',
+            '9.0.0.4': u'S4',
+            '9.0.0.5': u'S5',
+            '9.0.0.6': u'S6',
             '1.0.0.2': u'R1',
             '6.0.0.3': u'R1',
             '2.0.0.2': u'R1',
@@ -827,11 +831,77 @@ class Controller(object):
                         # immediately in update_heartbeat_register
                         self.heartbeat_register[link]['count'] = 0
 
-                # wait 1.5 seconds before checking again as the heartbeat is currently sent every 1s
-                time.sleep(1.5)
+                # wait 1 seconds before checking again as the heartbeat is currently sent every 500ms
+                #  (controller cant handle more packets )
+                time.sleep(1.2)
             except (KeyboardInterrupt, SystemExit):
                 print("Exiting...")
                 break
+
+    def init_bfd(self):
+        """Answer to BFD control packets.
+        """
+
+        sport = 65500
+
+        # the switches have static routes assigned
+        name_to_ip = {
+            'S1': '9.0.0.1',
+            'S2': '9.0.0.2',
+            'S3': '9.0.0.3',
+            'S4': '9.0.0.4',
+            'S5': '9.0.0.5',
+            'S6': '9.0.0.6'
+        }
+
+        # for every switch
+        for switch in self.topo.get_p4switches().keys():
+
+            # get the cpu port interface
+            interface = self.topo.get_cpu_port_intf(switch)
+
+            # for every connected router
+            for router in [
+                    node for node in self.topo.get_neighbors(switch)
+                    if self.topo.is_router(node)
+            ]:
+
+                # get the source and destination mac/ip adresses
+                src_mac = self.topo.node_to_node_mac(switch, router)
+                dst_mac = self.topo.node_to_node_mac(router, switch)
+
+                dst_ip = self.topo.node_to_node_interface_ip(
+                    router, switch).split("/")[0]
+                src_ip = name_to_ip[switch]
+
+                # choose a random discriminator
+                my_discriminator = randint(1, 10000000)
+
+                # populate the bfd control packet
+                bfdpkt = Ether(dst=dst_mac, src=src_mac, type=2048) / IP(
+                    version=4,
+                    tos=192,
+                    dst=dst_ip,
+                    proto=17,
+                    flags=2,
+                    ttl=255,
+                    src=src_ip) / UDP(sport=sport, dport=3784) / BFD(
+                        version=1,
+                        diag=0,
+                        your_discriminator=0,
+                        flags=32,
+                        my_discriminator=my_discriminator,
+                        echo_rx_interval=50000,
+                        len=24,
+                        detect_mult=3,
+                        min_tx_interval=500000,
+                        min_rx_interval=500000,
+                        sta=1)
+
+                sendp(bfdpkt, iface=interface, count=10, verbose=0)
+
+                # decrement the source port (has to be unique)
+                sport -= 1
 
 
 if __name__ == "__main__":

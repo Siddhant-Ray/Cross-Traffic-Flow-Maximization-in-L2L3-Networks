@@ -14,16 +14,22 @@ set -eu  # Exit on error (-e), treat unset variables as errors (-u).
 
 vtysh << EOM
 conf t
+
+ip route 9.0.0.1/32 port_S1
+ip route 9.0.0.5/32 port_S5
+ip route 9.0.0.6/32 port_S6
 bfd
-peer 1.0.0.1 interface port_S1
+
+bfd
+peer 9.0.0.1 interface port_S1
 receive-interval 50
 transmit-interval 50
 exit
-peer 5.0.0.1 interface port_S5
+peer 9.0.0.5 interface port_S5
 receive-interval 50
 transmit-interval 50
 exit
-peer 6.0.0.1 interface port_S6
+peer 9.0.0.6 interface port_S6
 receive-interval 50
 transmit-interval 50
 exit
@@ -73,6 +79,11 @@ EOM
 #
 # Write your configuration below. This script will be executed on the container.
 ###############################################################################
+
+# setup arp for switches so BFD packets can be sent
+ arp -i port_S1 -s 9.0.0.1 11:00:01:00:00:01
+ arp -i port_S5 -s 9.0.0.5 12:00:01:00:00:01
+ arp -i port_S6 -s 9.0.0.6 13:00:01:00:00:01
 
 # R2 
 tc qdisc add dev port_R2 handle 1: root htb default 14 direct_qlen 1000000
