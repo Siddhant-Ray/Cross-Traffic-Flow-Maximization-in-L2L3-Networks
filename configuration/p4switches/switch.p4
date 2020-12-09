@@ -15,11 +15,7 @@ const bit<16> TYPE_IPV4 = 0x800;
 #define N_PORTS 512
 
 //Bandwidth
-<<<<<<< HEAD
 #define BW 12
-=======
-#define BW 1
->>>>>>> 162ea60ecaeffaf3403e0fc0a19b152731f3f8d2
 
 /*************************************************************************
 *********************** H E A D E R S  ***********************************
@@ -217,11 +213,7 @@ control MyIngress(inout headers hdr,
     register<bit<1>>(N_PORTS) linkState;
 
     // Register for reading bandwidth 
-<<<<<<< HEAD
     register<bit<1>>(BW) Bandwidth;
-=======
-    register<bit<1>>(N_PORTS) Bandwidth;
->>>>>>> 162ea60ecaeffaf3403e0fc0a19b152731f3f8d2
 
     action query_nextLink(bit<32>  index){ //Queries LinkState
         meta.index = index;
@@ -421,7 +413,6 @@ control MyIngress(inout headers hdr,
             
                     // TOS = 32 corresponds to DSCP = 8 (bronze traffic)
                     // TOS = 64 corresponds to DSCP = 16 (silver traffic)
-<<<<<<< HEAD
 
                     // A more generic solution exists if the we don't check using the TOS field in the P4 code, rather use 
                     // the traffic matrix to read the incoming datarates of the flows. If the incoming flow has a datarate
@@ -429,8 +420,6 @@ control MyIngress(inout headers hdr,
                     //egress paths. The bandwidth register keeps a track of this and when set to 1, it splits the traffic.
                     
                     read_bandwidth( 0);
-=======
->>>>>>> 162ea60ecaeffaf3403e0fc0a19b152731f3f8d2
                     if (meta.Bandwidth == 1){
                     //if(hdr.ipv4.dscp == 8  || hdr.ipv4.dscp == 16){
 
