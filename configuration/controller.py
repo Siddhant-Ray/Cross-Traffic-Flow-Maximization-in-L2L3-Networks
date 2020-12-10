@@ -266,13 +266,23 @@ class Controller(object):
                 #Check if there are directly connected hosts
                 else:
                     if self.topo.get_hosts_connected_to(sw_dst):
-                        paths = self.topo.get_all_paths_between_nodes(
-                            sw_name, sw_dst)
+                        #paths = self.topo.get_all_paths_between_nodes(
+                            #sw_name, sw_dst)
+                        all_nodes = self.topo.get_neighbors(sw_name)    
+                        #print all_nodes
+                        hosts = self.topo.get_hosts_connected_to(sw_name)
+                        #print hosts
+                        all_nodes_without_hosts = list(set(all_nodes) - set(hosts))
+                        #print all_nodes_without_hosts
+                        #time.sleep(100)
                         for host in self.topo.get_hosts_connected_to(sw_dst):
 
                             #Next hop is the destination
-                            if len(paths) == 1:
-                                next_hop = paths[0][1]
+                            if len(all_nodes_without_hosts) == 1:
+                                #next_hop = paths[0][1]
+                                next_hop = all_nodes_without_hosts[0]
+                                #print next_hop
+                                #time.sleep(30)
 
                                 host_ip = self.topo.get_host_ip(host) + "/24"
                                 sw_port = self.topo.node_to_node_port_num(
@@ -288,8 +298,11 @@ class Controller(object):
                                      str(sw_port)])
 
                             #Multiple next hops are possible to reach the destination
-                            elif len(paths) > 1:
-                                next_hops = [x[1] for x in paths]
+                            elif len(all_nodes_without_hosts) > 1:
+                                #next_hops = [x[1] for x in paths]
+                                next_hops = all_nodes_without_hosts
+                                #print next_hops
+                            
                                 dst_macs_ports = [
                                     (self.topo.node_to_node_mac(
                                         next_hop, sw_name),
