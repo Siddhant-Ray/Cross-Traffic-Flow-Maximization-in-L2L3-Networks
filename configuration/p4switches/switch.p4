@@ -397,90 +397,74 @@ control MyIngress(inout headers hdr,
             // if the packet is a bsd packet, send it to the controller
             if(hdr.bfd.isValid()){
                 clone(CloneType.I2E, 100);
-            }
-
-
+            } 
             else {
-
-
-                    // If Links are up, then ECMP overwrites. In our case "ECMP", splits over all paths not just equicost paths.
-		    // This isn't true ECMP but the idea is derived from ECMP to work for our speficic network
-
+                // If Links are up, then ECMP overwrites. In our case "ECMP", splits over all paths not just equicost paths.
+		        // This isn't true ECMP but the idea is derived from ECMP to work for our speficic network
+          
+                // Split at per packet basis for bronze and silver traffic over all the cost egress paths. This is 
+                // because bronze and silver needs larger datarate (12M and 6M) compared to the bandwidth of the egress links
+                // and we want to utilise all the links. Our idea is to split bronze and silver traffic over all the links.
+                // Hence, we extended the flowlet switching to near packet switching (inter packet gap <  flowlet timeout) 
+                //for bronze and silver traffic within a flow as packet reordering does not matter for our network.
             
-                    // Split at per packet basis for bronze and silver traffic over all the cost egress paths. This is 
-                    // because bronze and silver needs larger datarate (12M and 6M) compared to the bandwidth of the egress links
-                    // and we want to utilise all the links. Our idea is to split bronze and silver traffic over all the links.
-                    // Hence, we extended the flowlet switching to near packet switching (inter packet gap <  flowlet timeout) 
-                    //for bronze and silver traffic within a flow as packet reordering does not matter for our network.
-            
-                    // TOS = 32 corresponds to DSCP = 8 (bronze traffic)
-                    // TOS = 64 corresponds to DSCP = 16 (silver traffic)
+                // TOS = 32 corresponds to DSCP = 8 (bronze traffic)
+                // TOS = 64 corresponds to DSCP = 16 (silver traffic)
 
-                    // A more generic solution exists if the we don't check using the TOS field in the P4 code, rather use 
-                    // the traffic matrix to read the incoming datarates of the flows. If the incoming flow has a datarate
-                    // of  > 4 Mbps which is greater than the egress link bandwidth, we split the traffic all all the 
-                    //egress paths. The bandwidth register keeps a track of this and when set to 1, it splits the traffic.
+                // A more generic solution exists if the we don't check using the TOS field in the P4 code, rather use 
+                // the traffic matrix to read the incoming datarates of the flows. If the incoming flow has a datarate
+                // of  > 4 Mbps which is greater than the egress link bandwidth, we split the traffic all all the 
+                //egress paths. The bandwidth register keeps a track of this and when set to 1, it splits the traffic.
                     
-                    read_bandwidth( 0);
-                    if (meta.Bandwidth == 1){
-                    //if(hdr.ipv4.dscp == 8  || hdr.ipv4.dscp == 16){
+                read_bandwidth( 0);
+                 //if (meta.Bandwidth == 1){
+                if(hdr.ipv4.dscp == 8  || hdr.ipv4.dscp == 16){
 
-                        @atomic {
-                            read_flowlet_registers();
-                            meta.flowlet_time_diff = standard_metadata.ingress_global_timestamp - meta.flowlet_last_stamp;
+                    @atomic {
+                        read_flowlet_registers();
+                        meta.flowlet_time_diff = standard_metadata.ingress_global_timestamp - meta.flowlet_last_stamp;
 
-                            //check if inter-packet gap is < the timeout
-                            if (meta.flowlet_time_diff < FLOWLET_TIMEOUT){
-                                update_flowlet_id();
-                            }
-                        }
-                    
-                        //Apply the ecmp group next hop for bronze and silver( per packet)
-                        switch (ipv4_lpm.apply().action_run){
-                            ecmp_group: {
-                                ecmp_group_to_nhop.apply();
-                            }
+                        //check if inter-packet gap is < the timeout
+                        if (meta.flowlet_time_diff < FLOWLET_TIMEOUT){
+                            update_flowlet_id();
                         }
                     }
+                    
+                    //Apply the ecmp group next hop for bronze and silver( per packet)
+                    switch (ipv4_lpm.apply().action_run){
+                        ecmp_group: {
+                            ecmp_group_to_nhop.apply();
+                        }
+                    }
+                }
 
-                    else {
+                else {
 			
-			// Now we take the case of TOS = 128 (gold)
-			//********************** ADD FOR LFA********************	
+			    // Now we take the case of TOS = 128 (gold)
+			    //********************** ADD FOR LFA********************	
 			
-			// For gold traffic, we only split per flow for different paths 
-			// as the data rate (1M) is less than the bandwidth of every
-			// possible link
+			    // For gold traffic, we only split per flow for different paths 
+			    // as the data rate (1M) is less than the bandwidth of every
+			    // possible link
 
-			// We configure an LFA just for gold traffic as it is not split
-			// there are backup links available for gold traffic
-			
- 
-		 	dst_index.apply(); //This checks if the link to the nextHop is up
+			    // We configure an LFA just for gold traffic as it is not split
+			    // there are backup links available for gold traffic
+    	 	        dst_index.apply(); //This checks if the link to the nextHop is up
 
-                	if (meta.linkState == 1){
-
+                	if (meta.linkState > 0){
                      	//If the link is down, trigger the LFA code
-
                     	read_alternativePort();
-                    	rewrite_mac.apply();
-                        }	
-
-                	else {
-
-                        // Apply the "our ecmp"  per flow for gold (TOS = 128) 
-		        // traffic classes
-                        switch (ipv4_lpm.apply().action_run){
-                            ecmp_group: {
-                                ecmp_group_to_nhop.apply();
-                            }
-                        }
-                    }
-                }	
-           } 
-        } 
+                    }	
+                	
+                    // Apply the "our ecmp"  per flow for gold (TOS = 128) 
+		            // traffic classes
+                    rewrite_mac.apply(); //This just uses PrimaryNH that is already written to meta.NextHop
+                    	
+                } 
+            } 
+        }
     }
-}
+}       
 
 /*************************************************************************
 ****************  E G R E S S   P R O C E S S I N G   *******************

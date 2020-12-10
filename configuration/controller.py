@@ -94,12 +94,15 @@ class Controller(object):
         self.add_l2_forwarding_rules()
 
         #Use the traffic matrix
+        self.get_gold_switch()
         self.compute_bandwidth_for_traffic_split()
+
 
         #Call ECMP route
         self.ECMP_route()
 
         #Installing LFAs
+        self.install_macs()
         # Install nexthop indices and populate registers.
         self.install_nexthop_indices_LFA(
         )  # This installs the indices, which get used to query Link Status
@@ -111,6 +114,8 @@ class Controller(object):
         )  #Sets up the registers that track downed interfaces
         self.LFA_flag = 0  #This is changed when there was a change in status of at least one link
         # self.i_test = 0
+        
+
 
         # answer to the routers so that the bfd packets will be sent at a higher rate
         self.init_bfd()
@@ -398,6 +403,17 @@ class Controller(object):
     # Link management helpers.
     # ========================
 
+    def get_gold_switch(self):
+        #Get traffic matrix
+        traffic_list = self.traffic
+        gold_tos = '128'
+        for flow in traffic_list:
+            if flow['tos'] == gold_tos: # i.e. if it is the gold flow
+                src_host = flow['src'] # the source host
+                self.gold_switch = self.topo.get_switches_connected_to(src_host)[0]
+                self.gold_dst = flow['dst']
+
+
     def check_all_links(self):
         """Check the state for all link interfaces."""
         failed_links = []
@@ -589,6 +605,22 @@ class Controller(object):
 
         return results
 
+    def install_macs(self):
+        """Install the port-to-mac map on all switches.
+
+        You do not need to change this.
+
+        Note: Real switches would rely on L2 learning to achieve this.
+        """
+        for switch, control in self.controllers.items():
+            print "Installing MAC addresses for switch '%s'." % switch
+            print "=========================================\n"
+            for neighbor in self.topo.get_neighbors(switch):
+                mac = self.topo.node_to_node_mac(neighbor, switch)
+                port = self.topo.node_to_node_port_num(switch, neighbor)
+                control.table_add('rewrite_mac', 'rewriteMac',
+                                  [str(port)], [str(mac)])
+
     def install_nexthop_indices_LFA(self):
         """Install the mapping from prefix to nexthop ids for all switches."""
         for switch, control in self.controllers.items():
@@ -608,12 +640,13 @@ class Controller(object):
         )  # We need to link the ECMP here with the LFA, so that the nexthops used here are the ECMP ones
         lfas = self.compute_lfas(nexthops, failures=failures)
 
+        
         for switch, destinations in nexthops.items():
             control = self.controllers[switch]
             for host, nexthop in destinations:
                 nexthop_id = self.get_nexthop_index(host)
                 port = self.get_port(switch, nexthop)
-                # Write the port in the nexthop lookup register.
+                # Write the port in the nexthop lookup register.             
                 control.register_write('primaryNH', nexthop_id, port)
 
         #######################################################################
@@ -622,24 +655,25 @@ class Controller(object):
 
         # LFA solution.
         # =============
+            
+            for host, nexthop in destinations:
+                nexthop_id = self.get_nexthop_index(host)
+                if host == nexthop:
+                    continue  # Cannot do anything if host link fails.
 
-        for host, nexthop in destinations:
-            nexthop_id = self.get_nexthop_index(host)
-            if host == nexthop:
-                continue  # Cannot do anything if host link fails.
-
-            try:
-                lfa_nexthop = lfas[switch][host]
-            except KeyError:
-                lfa_nexthop = nexthop  # Fallback to default nh.
-
-            lfa_port = self.get_port(switch, lfa_nexthop)
-            control.register_write('alternativeNH', nexthop_id, lfa_port)
+                try:
+                    lfa_nexthop = lfas[switch][host]
+                except KeyError:
+                    lfa_nexthop = nexthop  # Fallback to default nh.
+                lfa_port = self.get_port(switch, lfa_nexthop)   
+                
+                control.register_write('alternativeNH', nexthop_id, lfa_port)
 
     def compute_lfas(self, nexthops, failures=None):
         """Compute LFA (loop-free alternates) for all nexthops."""
         _d = self.dijkstra(failures=failures)[0]
         lfas = {}
+
         for switch, destinations in nexthops.items():
             switch_lfas = lfas[switch] = {}
             # connected = set(self.topo.get_switches_connected_to(switch))
@@ -670,7 +704,6 @@ class Controller(object):
 
                     # Keep LFA with shortest distance
                     switch_lfas[host] = min(noloop, key=lambda x: x[1])[0]
-
         return lfas
 
     ####################### LFA INSTALL ################################
