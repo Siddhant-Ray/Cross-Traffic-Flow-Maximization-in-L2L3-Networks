@@ -142,35 +142,25 @@ class Controller(object):
             time.sleep(1)
 
     def compute_bandwidth_for_traffic_split(self):
+        """Compute the bandwidths of the flow to decide on which switch we do load balancing.
+        """
 
-        #Get traffic matrix
-        traffic_list = self.traffic
+        #Iterate over all fields of the traffic list
+        for flow in self.traffic:
 
-        #Get list of switches
-        list_of_switches = self.topo.get_p4switches().keys()
-        print list_of_switches
+            #Get the switch the traffic arrives at first
+            switch = "S" + flow['src'][1]
 
-        for switch in list_of_switches:
+            #Extracting the numeric part of the BW
+            bandwidth = flow['rate'][:-1]
 
-            #Iterate over all fields of the traffic list
-            for item in traffic_list:
+            #If bandwidth > 4, update register for that switch
+            if int(bandwidth) > 4:
 
-                #Check if last digits of source matches switch i.e. source H1 means register in switch S1 should be filled
-                if item['src'][1] == str(switch)[1]:
-
-                    #Extracting the numeric part of the BW
-                    bandwidth = item['rate'][0:len(item['rate']) - 1]
-                    print bandwidth
-
-                    #If bandwidth > 4, update register fot that switch
-                    if int(bandwidth) > 4:
-
-                        control = self.controllers[switch]
-                        port = 0
-                        state = 1
-                        control.register_write('Bandwidth', port, state)
-                        print control.register_read('Bandwidth')
-                        #time.sleep(2)
+                control = self.controllers[switch]
+                index = 0
+                state = 1  # means traffic splitting is necessary
+                control.register_write('Bandwidth', index, state)
 
     def check_interface_and_trigger_lfa(self):
         while (True):
@@ -267,12 +257,13 @@ class Controller(object):
                 else:
                     if self.topo.get_hosts_connected_to(sw_dst):
                         #paths = self.topo.get_all_paths_between_nodes(
-                            #sw_name, sw_dst)
-                        all_nodes = self.topo.get_neighbors(sw_name)    
+                        #sw_name, sw_dst)
+                        all_nodes = self.topo.get_neighbors(sw_name)
                         #print all_nodes
                         hosts = self.topo.get_hosts_connected_to(sw_name)
                         #print hosts
-                        all_nodes_without_hosts = list(set(all_nodes) - set(hosts))
+                        all_nodes_without_hosts = list(
+                            set(all_nodes) - set(hosts))
                         #print all_nodes_without_hosts
                         #time.sleep(100)
                         for host in self.topo.get_hosts_connected_to(sw_dst):
@@ -302,7 +293,7 @@ class Controller(object):
                                 #next_hops = [x[1] for x in paths]
                                 next_hops = all_nodes_without_hosts
                                 #print next_hops
-                            
+
                                 dst_macs_ports = [
                                     (self.topo.node_to_node_mac(
                                         next_hop, sw_name),
@@ -775,9 +766,7 @@ class Controller(object):
                 dst_mac = self.topo.node_to_node_mac('S3', 'S4')
 
                 # send heartbeat between S4-S3
-                sendp(Ether(
-                    dst=dst_mac, src=src_mac, type=2048
-                ) / IP(
+                sendp(Ether(dst=dst_mac, src=src_mac, type=2048) / IP(
                     version=4, tos=192, dst='9.0.0.3', proto=17, src='9.0.0.4')
                       / UDP(sport=49155, dport=3784, len=32) /
                       BFD(version=1,
