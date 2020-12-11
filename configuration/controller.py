@@ -263,8 +263,8 @@ class Controller(object):
         """Populates the tables for Multipath
             
             For our network we split over all egress paths irrespectively of the cost. More details on 
-            this is given in the apply() section of the switch.p4 program. We use 
-            the get_neighbors_connected_to method of the topology object, to determine the next hop.
+            this is given in the apply() section of the switch.p4 program. We use the topo.get_neighbors(node)
+            method of the topology object, to determine the next hop.
             This is only used for bronze and silver traffic.
         """
 
@@ -277,7 +277,7 @@ class Controller(object):
             for sw_dst in self.topo.get_p4switches():
 
                 # If the switch is the destination switch
-                # then add the nexthop to it's connected host.
+                # then add the nexthop to it's connected host
                 if sw_name == sw_dst:
                     for host in self.topo.get_hosts_connected_to(sw_name):
                         sw_port = self.topo.node_to_node_port_num(
@@ -291,17 +291,31 @@ class Controller(object):
                             "ipv4_lpm", "set_nhop", [str(host_ip)],
                             [str(host_mac), str(sw_port)])
 
-                # If the switch is not the final switch in the path
+                # If the switch is not the final switch but an
+                # and is an intermediate switch in the path.
+                # We add next_hops for forwarding.
                 else:
                     if self.topo.get_hosts_connected_to(sw_dst):
+
+                        # Get all the nodes for the next hop.
+                        # This works as all switches in our network
+                        # are ingress and egress switches and we put
+                        # bronze and silver traffic on all links.
                         all_nodes = self.topo.get_neighbors(sw_name)
+                        # Get the hosts connected to the switch
                         hosts = self.topo.get_hosts_connected_to(sw_name)
+
+                        # Only add switches for next_hop, not hosts.
                         all_nodes_without_hosts = list(
                             set(all_nodes) - set(hosts))
 
                         for host in self.topo.get_hosts_connected_to(sw_dst):
+
+                            # If only one next hop is possible at the switch
+                            # to reach the destination
                             if len(all_nodes_without_hosts) == 1:
-                                next_hop = all_nodes_without_hosts[0]
+                                # Final next hop
+                                next_hop = all_nodes_without_hosts
 
                                 host_ip = self.topo.get_host_ip(host) + "/24"
                                 sw_port = self.topo.node_to_node_port_num(
@@ -316,11 +330,11 @@ class Controller(object):
                                     [str(dst_sw_mac),
                                      str(sw_port)])
 
-                            #Multiple next hops are possible to reach the destination
+                            # If multiple next hops are possible to reach
+                            # the destination
                             elif len(all_nodes_without_hosts) > 1:
-                                #next_hops = [x[1] for x in paths]
+                                # Final next_hops list
                                 next_hops = all_nodes_without_hosts
-                                #print next_hops
 
                                 dst_macs_ports = [
                                     (self.topo.node_to_node_mac(
@@ -331,7 +345,11 @@ class Controller(object):
                                 ]
                                 host_ip = self.topo.get_host_ip(host) + "/24"
 
-                                #Check if the ecmp group already exists. The ecmp group is defined by the number of next ports used, thus we can use dst_macs_ports as the key
+                                # Check if the mp group already exists. 
+                                # The mp group is defined by the number of next ports used, 
+                                # We use dst_macs_ports as the key. Groups are used to map
+                                # unique next hops for multiple routes. (Referenced to the
+                                # exercise for the use of MP group ids)
 
                                 if switch_mp_groups[sw_name].get(
                                         tuple(dst_macs_ports), None):
@@ -346,13 +364,15 @@ class Controller(object):
                                             str(len(dst_macs_ports))
                                         ])
 
-                                #Create a new ECMP group for this switch
+                                # Create a new MP group for this switch if
+                                # it does not exist
                                 else:
                                     new_mp_group_id = len(
                                         switch_mp_groups[sw_name]) + 1
                                     switch_mp_groups[sw_name][tuple(
                                         dst_macs_ports)] =new_mp_group_id 
-                                    #add group
+
+                                    # add the new groups for multipath
                                     for i, (mac,
                                             port) in enumerate(dst_macs_ports):
                                         print "table_add at {}:".format(
@@ -363,7 +383,7 @@ class Controller(object):
                                              str(i)],
                                             [str(mac), str(port)])
 
-                                    #add forwarding rule
+                                    #add forwarding rule to the table
                                     print "table_add at {}:".format(sw_name)
                                     self.controllers[sw_name].table_add(
                                         "ipv4_lpm", "mp_group",
