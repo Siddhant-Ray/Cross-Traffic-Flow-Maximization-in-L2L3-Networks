@@ -52,11 +52,6 @@ class Controller(object):
         self._connect_to_switches()
         self._reset_states()
 
-        # bfd implementation
-        self.ip_lookup_table = {}
-        self.populate_ip_lookup_table()
-        self.add_mirrors()
-
         # Start main loop
         self.main()
 
@@ -89,90 +84,84 @@ class Controller(object):
 
     def main(self):
         """Main controller method."""
+        # Initialize the IP lookup table.
+        # This is used to match IP addresses to node names.
+        self.ip_lookup_table = {}
+        self.populate_ip_lookup_table()
+
+        # This adds the mirrors to receive
+        # the forwarded BFD packets from the switches.
+        self.add_mirrors()
+
         # Initialization of L2 forwarding. Feel free to modify.
         self.create_l2_multicast_group()
         self.add_l2_forwarding_rules()
 
-        #Use the traffic matrix
-        self.get_gold_switch()
+        # Use the traffic matrix (this is an alternative solution)
         self.compute_bandwidth_for_traffic_split()
 
-        #Call ECMP route
-        self.ECMP_route()
+        # Call MP route
+        self.MP_route()
 
-        #Installing LFAs
+        # Installing the rewriteMac table to match ports to
+        # their MAC addresses.
         self.install_macs()
-        # Install nexthop indices and populate registers.
-        self.install_nexthop_indices_LFA(
-        )  # This installs the indices, which get used to query Link Status
-        self.update_nexthops_LFA(
-        )  # This matches ports to indices, so that we can check their linkstate in P4
+        # Install nexthop indices and populate registers used to query nexthops in the P4 code (used in LFA).
+        self.install_nexthop_indices_LFA()
+        # Recalculates next hops and LFAs after link failure is detected and installs them in their
+        # relevant registers (specifically the primaryNH and the alternativeNH registers)
+        self.update_nexthops_LFA()
 
-        self.setup_link_map()  #THis includes Routers in the switchgraph
-        self.install_link_register(
-        )  #Sets up the registers that track downed interfaces
-        self.LFA_flag = 0  #This is changed when there was a change in status of at least one link
-        # self.i_test = 0
+        # This extends the switch graph of the topology to
+        # include routers. Specifically this is used so we can also
+        # detect link failure between switches and routers.
+        self.setup_link_map()
+        # Sets up two dictionaries to track the link status.
+        self.install_link_register()
+        # This is changed when there was a change in status of at least one link.
+        # This preserves calculation cycles.
+        self.LFA_flag = 0
 
-        # answer to the routers so that the bfd packets will be sent at a higher rate
+        # This answers to the routers so that the BFD packets will be sent at a higher rate
+        # back to the switches. If a router wouldn't receive a BFD control packet it would
+        # - according to RFC 5881 - only send control packets every 1s.
         self.init_bfd()
 
-        # all those have to run in parallel, thus we are using threads
-        # every function would be blocking otherwise
+        # All these functions have to run in parallel, thus we are using Threads.
+        # Otherwise each of them would block.
         sniffing = threading.Thread(target=self.sniff_bfd_packets)
         sniffing.daemon = True
         sniffing.start()
 
+        # This sends heartbeats between the switches so we can
+        # detect link failures in between switches.
         heartbeat = threading.Thread(
             target=self.send_heartbeat_between_switches)
         heartbeat.daemon = True
         heartbeat.start()
 
+        # Waiting for one second so that the heartbeat register can
+        # count some packets already so that the links won't be registerd
+        # as down. This doesn't exceed the 5s initialization period.
         time.sleep(1)
 
+        # Checking the status of our switch-switch and switch-router
+        # links.
         links = threading.Thread(target=self.check_link_status)
         links.daemon = True
         links.start()
 
+        # Converts the BFD supported heartbeat register into instructions for the
+        # LFA and also triggers the LFA part of the P4 code in case of link failure.
         interfaces = threading.Thread(
             target=self.check_interface_and_trigger_lfa)
         interfaces.daemon = True
         interfaces.start()
 
-        # keeping main thread alive so others dont get killed
+        # Keeping main thread alive so others dont get killed
+        # as they are run as daemons.
         while True:
             time.sleep(1)
-
-    def compute_bandwidth_for_traffic_split(self):
-        """Compute the bandwidths of the flow to decide on which switch we do load balancing.
-        """
-
-        #Iterate over all fields of the traffic list
-        for flow in self.traffic:
-
-            #Get the switch the traffic arrives at first
-            switch = "S" + flow['src'][1]
-
-            #Extracting the numeric part of the BW
-            bandwidth = flow['rate'][:-1]
-
-            #If bandwidth > 4, update register for that switch
-            if int(bandwidth) > 4:
-
-                control = self.controllers[switch]
-                index = 0
-                state = 1  # means traffic splitting is necessary
-                control.register_write('Bandwidth', index, state)
-
-    def check_interface_and_trigger_lfa(self):
-        while (True):
-            try:
-                self.check_interface_status(
-                )  #Function that still needs to be written, that updates
-                self.trigger_lfa()
-            except (KeyboardInterrupt, SystemExit):
-                print("Exiting...")
-                break
 
     def add_l2_forwarding_rules(self):
         """Add L2 forwarding groups to all switches.
@@ -211,7 +200,8 @@ class Controller(object):
                                      [str(connected_switch_port)])
 
     def create_l2_multicast_group(self):
-        """Create a multicast group to enable L2 broadcasting."""
+        """Create a multicast group to enable L2 broadcasting.
+        """
         for switch, controller in self.controllers.items():
             controller.mc_mgrp_create(self.L2_BROADCAST_GROUP_ID)
             port_list = []
@@ -234,17 +224,51 @@ class Controller(object):
         """
         for controller in self.controllers.values():
             controller.table_set_default("ipv4_lpm", "drop", [])
-            controller.table_set_default("ecmp_group_to_nhop", "drop", [])
+            controller.table_set_default("mp_group_to_nhop", "drop", [])
 
-    def ECMP_route(self):
-        """Populates the tables for ECMP
-            
-            For our network, it really isn't true ECMP as we don't split over only paths of equal cost,
-            rather all paths of any cost. More details on this is given in the apply() section of the
-            switch.p4 program. We use the get_all_paths_between_switches of the topology object.
-
+    def compute_bandwidth_for_traffic_split(self):
+        """Reading the bandwidths of the flow to decide on which switch we do load balancing.
         """
-        switch_ecmp_groups = {
+
+        # Iterate over all fields of the traffic list
+        for flow in self.traffic:
+
+        # Get the switch the traffic arrives at first
+            switch = "S" + flow['src'][1]
+
+            #Extracting the numeric part of the BW
+            bandwidth = flow['rate'][:-1]
+
+            #If bandwidth > 4, update register for that switch
+            if int(bandwidth) > 4:
+
+                control = self.controllers[switch]
+                index = 0
+                state = 1  # means traffic splitting is necessary
+                control.register_write('Bandwidth', index, state)
+
+    def check_interface_and_trigger_lfa(self):
+        """Checks the interfaces for link failures and then triggers the LFA.
+        """
+
+        while (True):
+            try:
+                self.check_interface_status()
+                self.trigger_lfa()
+            except (KeyboardInterrupt, SystemExit):
+                print("Exiting...")
+                break
+
+    def MP_route(self):
+        """Populates the tables for Multipath
+            
+            For our network we split over all egress paths irrespectively of the cost. More details on 
+            this is given in the apply() section of the switch.p4 program. We use 
+            the get_neighbors_connected_to method of the topology object, to determine the next hop.
+            This is only used for bronze and silver traffic.
+        """
+
+        switch_mp_groups = {
             sw_name: {}
             for sw_name in self.topo.get_p4switches().keys()
         }
@@ -252,7 +276,8 @@ class Controller(object):
         for sw_name, controller in self.controllers.items():
             for sw_dst in self.topo.get_p4switches():
 
-                #We can create direct connections
+                # If the switch is the destination switch
+                # then add the nexthop to it's connected host.
                 if sw_name == sw_dst:
                     for host in self.topo.get_hosts_connected_to(sw_name):
                         sw_port = self.topo.node_to_node_port_num(
@@ -260,33 +285,23 @@ class Controller(object):
                         host_ip = self.topo.get_host_ip(host) + "/24"
                         host_mac = self.topo.get_host_mac(host)
 
-                        #add ECMP table rules
+                        # add MP table rules
                         print "table_add at {}:".format(sw_name)
                         self.controllers[sw_name].table_add(
                             "ipv4_lpm", "set_nhop", [str(host_ip)],
                             [str(host_mac), str(sw_port)])
 
-                #Check if there are directly connected hosts
+                # If the switch is not the final switch in the path
                 else:
                     if self.topo.get_hosts_connected_to(sw_dst):
-                        #paths = self.topo.get_all_paths_between_nodes(
-                        #sw_name, sw_dst)
                         all_nodes = self.topo.get_neighbors(sw_name)
-                        #print all_nodes
                         hosts = self.topo.get_hosts_connected_to(sw_name)
-                        #print hosts
                         all_nodes_without_hosts = list(
                             set(all_nodes) - set(hosts))
-                        #print all_nodes_without_hosts
-                        #time.sleep(100)
-                        for host in self.topo.get_hosts_connected_to(sw_dst):
 
-                            #Next hop is the destination
+                        for host in self.topo.get_hosts_connected_to(sw_dst):
                             if len(all_nodes_without_hosts) == 1:
-                                #next_hop = paths[0][1]
                                 next_hop = all_nodes_without_hosts[0]
-                                #print next_hop
-                                #time.sleep(30)
 
                                 host_ip = self.topo.get_host_ip(host) + "/24"
                                 sw_port = self.topo.node_to_node_port_num(
@@ -294,7 +309,7 @@ class Controller(object):
                                 dst_sw_mac = self.topo.node_to_node_mac(
                                     next_hop, sw_name)
 
-                                #add ECMP table rules
+                                #add MP table rules
                                 print "table_add at {}:".format(sw_name)
                                 self.controllers[sw_name].table_add(
                                     "ipv4_lpm", "set_nhop", [str(host_ip)],
@@ -318,42 +333,42 @@ class Controller(object):
 
                                 #Check if the ecmp group already exists. The ecmp group is defined by the number of next ports used, thus we can use dst_macs_ports as the key
 
-                                if switch_ecmp_groups[sw_name].get(
+                                if switch_mp_groups[sw_name].get(
                                         tuple(dst_macs_ports), None):
-                                    ecmp_group_id = switch_ecmp_groups[
+                                    mp_group_id = switch_mp_groups[
                                         sw_name].get(tuple(dst_macs_ports),
                                                      None)
                                     print "table_add at {}:".format(sw_name)
                                     self.controllers[sw_name].table_add(
-                                        "ipv4_lpm", "ecmp_group",
+                                        "ipv4_lpm", "mp_group",
                                         [str(host_ip)], [
-                                            str(ecmp_group_id),
+                                            str(mp_group_id),
                                             str(len(dst_macs_ports))
                                         ])
 
                                 #Create a new ECMP group for this switch
                                 else:
-                                    new_ecmp_group_id = len(
-                                        switch_ecmp_groups[sw_name]) + 1
-                                    switch_ecmp_groups[sw_name][tuple(
-                                        dst_macs_ports)] = new_ecmp_group_id
+                                    new_mp_group_id = len(
+                                        switch_mp_groups[sw_name]) + 1
+                                    switch_mp_groups[sw_name][tuple(
+                                        dst_macs_ports)] =new_mp_group_id 
                                     #add group
                                     for i, (mac,
                                             port) in enumerate(dst_macs_ports):
                                         print "table_add at {}:".format(
                                             sw_name)
                                         self.controllers[sw_name].table_add(
-                                            "ecmp_group_to_nhop", "set_nhop",
-                                            [str(new_ecmp_group_id),
+                                            "mp_group_to_nhop", "set_nhop",
+                                            [str(new_mp_group_id),
                                              str(i)],
                                             [str(mac), str(port)])
 
                                     #add forwarding rule
                                     print "table_add at {}:".format(sw_name)
                                     self.controllers[sw_name].table_add(
-                                        "ipv4_lpm", "ecmp_group",
+                                        "ipv4_lpm", "mp_group",
                                         [str(host_ip)], [
-                                            str(new_ecmp_group_id),
+                                            str(new_mp_group_id),
                                             str(len(dst_macs_ports))
                                         ])
 
@@ -410,17 +425,6 @@ class Controller(object):
 
     # Link management helpers.
     # ========================
-
-    def get_gold_switch(self):
-        #Get traffic matrix
-        traffic_list = self.traffic
-        gold_tos = '128'
-        for flow in traffic_list:
-            if flow['tos'] == gold_tos:  # i.e. if it is the gold flow
-                src_host = flow['src']  # the source host
-                self.gold_switch = self.topo.get_switches_connected_to(
-                    src_host)[0]
-                self.gold_dst = flow['dst']
 
     def check_all_links(self):
         """Check the state for all link interfaces."""
@@ -615,10 +619,6 @@ class Controller(object):
 
     def install_macs(self):
         """Install the port-to-mac map on all switches.
-
-        You do not need to change this.
-
-        Note: Real switches would rely on L2 learning to achieve this.
         """
         for switch, control in self.controllers.items():
             print "Installing MAC addresses for switch '%s'." % switch
