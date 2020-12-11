@@ -97,7 +97,6 @@ class Controller(object):
         self.get_gold_switch()
         self.compute_bandwidth_for_traffic_split()
 
-
         #Call ECMP route
         self.ECMP_route()
 
@@ -114,8 +113,6 @@ class Controller(object):
         )  #Sets up the registers that track downed interfaces
         self.LFA_flag = 0  #This is changed when there was a change in status of at least one link
         # self.i_test = 0
-        
-
 
         # answer to the routers so that the bfd packets will be sent at a higher rate
         self.init_bfd()
@@ -201,6 +198,17 @@ class Controller(object):
                 router_port = self.topo.node_to_node_port_num(switch, router)
                 controller.table_add("l2_forward", "l2_forward_action",
                                      [str(router_mac)], [str(router_port)])
+
+            # Add rules for connected routers.
+            for connected_switch in self.topo.get_switches_connected_to(
+                    switch):
+                connected_switch_mac = self.topo.node_to_node_mac(
+                    connected_switch, switch)
+                connected_switch_port = self.topo.node_to_node_port_num(
+                    switch, connected_switch)
+                controller.table_add("l2_forward", "l2_forward_action",
+                                     [str(connected_switch_mac)],
+                                     [str(connected_switch_port)])
 
     def create_l2_multicast_group(self):
         """Create a multicast group to enable L2 broadcasting."""
@@ -408,11 +416,11 @@ class Controller(object):
         traffic_list = self.traffic
         gold_tos = '128'
         for flow in traffic_list:
-            if flow['tos'] == gold_tos: # i.e. if it is the gold flow
-                src_host = flow['src'] # the source host
-                self.gold_switch = self.topo.get_switches_connected_to(src_host)[0]
+            if flow['tos'] == gold_tos:  # i.e. if it is the gold flow
+                src_host = flow['src']  # the source host
+                self.gold_switch = self.topo.get_switches_connected_to(
+                    src_host)[0]
                 self.gold_dst = flow['dst']
-
 
     def check_all_links(self):
         """Check the state for all link interfaces."""
@@ -480,7 +488,7 @@ class Controller(object):
             self.links_states[
                 link] = "up"  # This register is for the controller itself
             self.heartbeat_register[link] = {
-                'count': 0,
+                'count': 1,
                 'status': 1
             }  #This register is updated continously by the heartbeat message
         print("Registers installed")
@@ -618,8 +626,8 @@ class Controller(object):
             for neighbor in self.topo.get_neighbors(switch):
                 mac = self.topo.node_to_node_mac(neighbor, switch)
                 port = self.topo.node_to_node_port_num(switch, neighbor)
-                control.table_add('rewrite_mac', 'rewriteMac',
-                                  [str(port)], [str(mac)])
+                control.table_add('rewrite_mac', 'rewriteMac', [str(port)],
+                                  [str(mac)])
 
     def install_nexthop_indices_LFA(self):
         """Install the mapping from prefix to nexthop ids for all switches."""
@@ -640,13 +648,12 @@ class Controller(object):
         )  # We need to link the ECMP here with the LFA, so that the nexthops used here are the ECMP ones
         lfas = self.compute_lfas(nexthops, failures=failures)
 
-        
         for switch, destinations in nexthops.items():
             control = self.controllers[switch]
             for host, nexthop in destinations:
                 nexthop_id = self.get_nexthop_index(host)
                 port = self.get_port(switch, nexthop)
-                # Write the port in the nexthop lookup register.             
+                # Write the port in the nexthop lookup register.
                 control.register_write('primaryNH', nexthop_id, port)
 
         #######################################################################
@@ -655,7 +662,7 @@ class Controller(object):
 
         # LFA solution.
         # =============
-            
+
             for host, nexthop in destinations:
                 nexthop_id = self.get_nexthop_index(host)
                 if host == nexthop:
@@ -665,8 +672,8 @@ class Controller(object):
                     lfa_nexthop = lfas[switch][host]
                 except KeyError:
                     lfa_nexthop = nexthop  # Fallback to default nh.
-                lfa_port = self.get_port(switch, lfa_nexthop)   
-                
+                lfa_port = self.get_port(switch, lfa_nexthop)
+
                 control.register_write('alternativeNH', nexthop_id, lfa_port)
 
     def compute_lfas(self, nexthops, failures=None):
@@ -728,6 +735,11 @@ class Controller(object):
             # extract src and dst ip addresses
             src_address = pkt[IP].src
             dst_address = pkt[IP].dst
+
+            if (src_address == '9.0.0.6' and pkt[BFD].flags == 32):
+                raise KeyError
+            elif (src_address == '9.0.0.4' and pkt[BFD].flags == 32):
+                raise KeyError
 
             # convert addresses to names to insert into the heartbeat_register
             src_node = self.ip_lookup_table[src_address]
@@ -816,8 +828,8 @@ class Controller(object):
                       iface='1-S4-cpu',
                       verbose=False)
 
-                # send the heartbeat packets every 0.5 seconds
-                time.sleep(0.5)
+                # send the heartbeat packets every 0.1 seconds
+                time.sleep(0.1)
             except (KeyboardInterrupt, SystemExit):
                 print("Exiting...")
                 break
@@ -854,11 +866,11 @@ class Controller(object):
 
             try:
                 # check for every link
+                # if we sniffed a bfd packet
                 for link in self.heartbeat_register:
-                    # if we sniffed a bfd packet
+                    # if not, set the link status to 0
                     if self.heartbeat_register[link]['count'] == 0:
                         print("link {} failed".format(link))
-                        # if not, set the link status to 0
                         self.heartbeat_register[link]['status'] = 0
                     else:
                         # if, reset the count to 0 for the next epoch
@@ -866,9 +878,9 @@ class Controller(object):
                         # immediately in update_heartbeat_register
                         self.heartbeat_register[link]['count'] = 0
 
-                # wait 1 seconds before checking again as the heartbeat is currently sent every 500ms
+                # wait 1.5 seconds before checking again as the heartbeat is currently sent every 100ms
                 #  (controller cant handle more packets )
-                time.sleep(1.2)
+                time.sleep(1.5)
             except (KeyboardInterrupt, SystemExit):
                 print("Exiting...")
                 break
@@ -929,8 +941,8 @@ class Controller(object):
                         echo_rx_interval=50000,
                         len=24,
                         detect_mult=3,
-                        min_tx_interval=500000,
-                        min_rx_interval=500000,
+                        min_tx_interval=100000,
+                        min_rx_interval=100000,
                         sta=1)
 
                 sendp(bfdpkt, iface=interface, count=10, verbose=0)

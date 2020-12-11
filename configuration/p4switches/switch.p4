@@ -388,6 +388,7 @@ control MyIngress(inout headers hdr,
     }
 
 
+
     apply {
 
         l2_forward.apply(); 
@@ -396,6 +397,7 @@ control MyIngress(inout headers hdr,
 
             // if the packet is a bsd packet, send it to the controller
             if(hdr.bfd.isValid()){
+                hdr.bfd.flags = (bit<6>)1;
                 clone(CloneType.I2E, 100);
             } 
             else {
