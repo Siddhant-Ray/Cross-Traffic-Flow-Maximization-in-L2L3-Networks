@@ -233,7 +233,7 @@ class Controller(object):
         # Iterate over all fields of the traffic list
         for flow in self.traffic:
 
-        # Get the switch the traffic arrives at first
+            # Get the switch the traffic arrives at first
             switch = "S" + flow['src'][1]
 
             #Extracting the numeric part of the BW
@@ -345,8 +345,8 @@ class Controller(object):
                                 ]
                                 host_ip = self.topo.get_host_ip(host) + "/24"
 
-                                # Check if the mp group already exists. 
-                                # The mp group is defined by the number of next ports used, 
+                                # Check if the mp group already exists.
+                                # The mp group is defined by the number of next ports used,
                                 # We use dst_macs_ports as the key. Groups are used to map
                                 # unique next hops for multiple routes. (Referenced to the
                                 # exercise for the use of MP group ids)
@@ -358,8 +358,8 @@ class Controller(object):
                                                      None)
                                     print "table_add at {}:".format(sw_name)
                                     self.controllers[sw_name].table_add(
-                                        "ipv4_lpm", "mp_group",
-                                        [str(host_ip)], [
+                                        "ipv4_lpm", "mp_group", [str(host_ip)],
+                                        [
                                             str(mp_group_id),
                                             str(len(dst_macs_ports))
                                         ])
@@ -370,7 +370,7 @@ class Controller(object):
                                     new_mp_group_id = len(
                                         switch_mp_groups[sw_name]) + 1
                                     switch_mp_groups[sw_name][tuple(
-                                        dst_macs_ports)] =new_mp_group_id 
+                                        dst_macs_ports)] = new_mp_group_id
 
                                     # add the new groups for multipath
                                     for i, (mac,
@@ -386,8 +386,8 @@ class Controller(object):
                                     #add forwarding rule to the table
                                     print "table_add at {}:".format(sw_name)
                                     self.controllers[sw_name].table_add(
-                                        "ipv4_lpm", "mp_group",
-                                        [str(host_ip)], [
+                                        "ipv4_lpm", "mp_group", [str(host_ip)],
+                                        [
                                             str(new_mp_group_id),
                                             str(len(dst_macs_ports))
                                         ])
@@ -736,7 +736,7 @@ class Controller(object):
     ####################### LFA INSTALL ################################
 
     def add_mirrors(self):
-        """Add mirrors for the data plane to communicate with the control plane.
+        """Add mirrors in the data plane to forward packets to the controllers.
         """
 
         base_session_id = 100
@@ -748,7 +748,7 @@ class Controller(object):
         """Update the heartbeat register according to incoming packets.
 
         :param pkt: an incoming bfd packet
-        :type pkt: bfd packet
+        :type pkt: bfd control packet
         """
 
         try:
@@ -756,17 +756,23 @@ class Controller(object):
             src_address = pkt[IP].src
             dst_address = pkt[IP].dst
 
+            # check whether a packet is a switch-switch packet and
+            # it's flag value is 32. if so, we know this packet hasn't
+            # been processed by the switch yet. the switch would have changed the flag value to 1
+            # before cloning it to the controller. this way we prevent "self-sniffing", meaning
+            # assuming a link is up when it is actually not.
             if (src_address == '9.0.0.6' and pkt[BFD].flags == 32):
                 raise KeyError
             elif (src_address == '9.0.0.4' and pkt[BFD].flags == 32):
                 raise KeyError
 
-            # convert addresses to names to insert into the heartbeat_register
+            # convert addresses to names to insert into the heartbeat_register.
+            # this includes the custom switch ip addresses we added in FRR.
             src_node = self.ip_lookup_table[src_address]
             dst_node = self.ip_lookup_table[dst_address]
 
             try:
-                # increase the counter
+                # increase the counter, meaning we sniffed one packet on the given link
                 self.heartbeat_register[(src_node, dst_node)]['count'] += 1
                 # and set the link state to up
                 self.heartbeat_register[(src_node, dst_node)]['status'] = 1
@@ -778,7 +784,7 @@ class Controller(object):
             pass
 
     def sniff_bfd_packets(self):
-        """Sniff on the CPU ports for BFD packets.
+        """Sniff on the CPU ports for cloned BFD packets.
         """
 
         try:
@@ -800,6 +806,8 @@ class Controller(object):
 
     def send_heartbeat_between_switches(self):
         """Send hearbeats between switch to switch links.
+        Because we are alreay sniffing for BFD packets anyways, for simplicity
+        we decided to make these packets BFD packets too.
         """
 
         while (True):
@@ -809,9 +817,10 @@ class Controller(object):
                 dst_mac = self.topo.node_to_node_mac('S1', 'S6')
 
                 # send heartbeat between S6-S1
+                # this is a BFD control packet
                 sendp(Ether(dst=dst_mac, src=src_mac, type=2048) / IP(
                     version=4, tos=192, dst='9.0.0.1', proto=17, src='9.0.0.6')
-                      / UDP(sport=49156, dport=3784, len=32) /
+                      / UDP(sport=49156, dport=3784, len=32) / # udp addresses should be unique
                       BFD(version=1,
                           diag=0,
                           your_discriminator=0,
@@ -831,9 +840,10 @@ class Controller(object):
                 dst_mac = self.topo.node_to_node_mac('S3', 'S4')
 
                 # send heartbeat between S4-S3
+                # this is a BFD control packet
                 sendp(Ether(dst=dst_mac, src=src_mac, type=2048) / IP(
                     version=4, tos=192, dst='9.0.0.3', proto=17, src='9.0.0.4')
-                      / UDP(sport=49155, dport=3784, len=32) /
+                      / UDP(sport=49155, dport=3784, len=32) / # udp addresses should be unique
                       BFD(version=1,
                           diag=0,
                           your_discriminator=0,
@@ -857,6 +867,7 @@ class Controller(object):
     def populate_ip_lookup_table(self):
         """Populates a table that maps IP addresses to names.
         """
+
         self.ip_lookup_table = {
             '9.0.0.1': u'S1',
             '9.0.0.2': u'S2',
@@ -879,7 +890,10 @@ class Controller(object):
         }
 
     def check_link_status(self):
-        """Checks the status of each link. If there hasn't been received a packet in 2 seconds, consider the link as down.
+        """Checks the status of each link. If there hasn't been received a packet in 1.5 seconds, consider the link as down.
+        Unfortunately due to scapy's limitations in sniffing on multiple interfaces at the same time, we can't further lower
+        this value. Scapy seems to be only capable of sniffing around 2 packets per second on each interface. With some
+        packets being dropped due to high load on a link, we consider the current value a good practice after quite some testing.
         """
 
         while (True):
@@ -889,13 +903,13 @@ class Controller(object):
                 # if we sniffed a bfd packet
                 for link in self.heartbeat_register:
                     # if not, set the link status to 0
+                    # setting the status to 1 if its up again happens
+                    # immediately in update_heartbeat_register after we received a packet
                     if self.heartbeat_register[link]['count'] == 0:
                         print("link {} failed".format(link))
                         self.heartbeat_register[link]['status'] = 0
+                    # if so, reset the count to 0 for the next epoch
                     else:
-                        # if, reset the count to 0 for the next epoch
-                        # setting the status to 1 if its up again happens
-                        # immediately in update_heartbeat_register
                         self.heartbeat_register[link]['count'] = 0
 
                 # wait 1.5 seconds before checking again as the heartbeat is currently sent every 100ms
@@ -906,12 +920,16 @@ class Controller(object):
                 break
 
     def init_bfd(self):
-        """Answer to BFD control packets.
+        """Answer to BFD control packets so that the routers send their control packets
+        at our desired rate. If we wouldn't do this, they would just send them at the default rate 
+        of 1s, which is suboptimal as we thrive for fast failure detection times.
         """
 
+        # the source port MUST be in the range 49152 through 65535
         sport = 65500
 
-        # the switches have static routes assigned
+        # the switches have static routes (and therefore addresses) assigned
+        # in the routers, those values are reflected here
         name_to_ip = {
             'S1': '9.0.0.1',
             'S2': '9.0.0.2',
@@ -941,7 +959,7 @@ class Controller(object):
                     router, switch).split("/")[0]
                 src_ip = name_to_ip[switch]
 
-                # choose a random discriminator
+                # choose a random discriminator, has to be unique (32 bit)
                 my_discriminator = randint(1, 10000000)
 
                 # populate the bfd control packet
@@ -965,6 +983,7 @@ class Controller(object):
                         min_rx_interval=100000,
                         sta=1)
 
+                # send 10 packets to make sure they reach their destination
                 sendp(bfdpkt, iface=interface, count=10, verbose=0)
 
                 # decrement the source port (has to be unique)
