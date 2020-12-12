@@ -392,25 +392,16 @@ class Controller(object):
                                             str(len(dst_macs_ports))
                                         ])
 
-    ####################### LFA INSTALL ################################
-    # Link management commands.
-    # =========================
+    # LFA functions
+    def check_interface_status(self):
+        """ This code is called by the links daemon and interfaces with the BFD-based heartbeat register. To avoid race-conditions
+        and undefined states, we use the heartbeart_register as a buffer that can be safely read by a second dictionary called link_states
+        that then updates the P4 interfaces to activate/deactivate the LFAs, as well as keep track of the link statuses in general.
+        """
 
-    def check_interface_status(
-        self
-    ):  #This needs to be triggered by OSPF to notice a link state is down
-        #This will need to be generated somehow
-
-        # if (self.i_test == 1):
-        #     test_link = (u'S3', u'S4')
-        #     self.heartbeat_register[test_link] = 0
-        # if(self.i_test == 3):
-        #     test_link = (u'S3', u'S4')
-        #     self.heartbeat_register[test_link] = 1
-
-        #Need to account for duplicates, especially if they disagree
-
-        self.LFA_flag = 0  #This flag gets raised if there was a transition in the heartbeat register
+        # This flag is used to to only trigger a recalculatin of the next_hops and LFA for gold traffic when there has been a change
+        # in the heartbeat_register. This massively improves performance as it eliminates unnecessary rewrites of the P4 tables and registers
+        self.LFA_flag = 0
 
         for link in self.heartbeat_register:
             status = self.heartbeat_register[link]['status']
@@ -418,6 +409,7 @@ class Controller(object):
 
             heartbeat_state = "down" if status == 0 else "up"  #For now, assume that heartbeat  is 0 or 1
 
+            # This checks if there has been a change (or transition) in the heartbeat_register
             if heartbeat_state == current_reg_value:
                 pass
             else:
@@ -425,27 +417,24 @@ class Controller(object):
                 if status == 0:  #That is, if its down
                     self.update_interfaces(
                         link, "down"
-                    )  # Set the self.interfaces dictionary that Pyton uses
+                    )  # Set the self.links_states dictionary that the controller uses
                     self.update_linkstate(link,
                                           "down")  # Sets the P4 registers
                 else:
                     self.update_interfaces(link, "up")  # See above
                     self.update_linkstate(link, "up")  # See above
 
-        # self.i_test = self.i_test  + 1
-
     def trigger_lfa(self):
-        """Notify controller of failures (or lack thereof)."""
+        """This extracts all the failed links currently in the network (ignoring the internal backbone connections),
+        which we can then feed into the djikstra calculations to account for failed links when finding a new shortest path for gold"""
         failed = self.check_all_links()
-        if self.LFA_flag:  #So if there was a change
+        if self.LFA_flag:
             print("Processing change in Heartbeat")
             self.failure_notification(failed)
         else:
             pass  #Otherwise, continue on as before
 
-    # Link management helpers.
-    # ========================
-
+    # LFA interfacing functions with the BFD code and the P4 code
     def check_all_links(self):
         """Check the state for all link interfaces."""
         failed_links = []
@@ -455,7 +444,9 @@ class Controller(object):
         return failed_links
 
     def if_up(self, link):
-        """Return True if interface is up, else False."""
+        """Return True if interface is up, else False.
+        This was changed from the Exercise code, since now we no longer have control of the actual network, we thus simply use our 
+        link_states dictionary, which we designed to be stable and not fluctuating asynchronously as the heartbeat_register does"""
         status = self.links_states[link]
         if status == "up":
             return True
@@ -463,18 +454,19 @@ class Controller(object):
             return False
 
     def update_interfaces(self, link, state):
-        """Set link to state (up or down)."""
+        """Set link to state (up or down). This was changed to capture only the links, 
+        since the controller does not actually care about specific interfaces"""
         self.links_states[link] = state
 
     def get_interfaces(self, link):
-        """Return tuple of interfaces on both sides of the link."""
+        """Return tuple of interfaces on both sides of the link. This is used to allow the controller to actuate the P4 registers"""
         node1, node2 = link
         if_12 = self.topo[node1][node2]['intf']
         if_21 = self.topo[node2][node1]['intf']
         return if_12, if_21
 
     def get_ports(self, link):
-        """Return tuple of interfaces on both sides of the link."""
+        """Return tuple of interfaces on both sides of the link. As above, needed to interface with P4"""
         node1, node2 = link
         if1, if2 = self.get_interfaces(link)
         port1 = self.topo[node1]['interfaces_to_port'][if1]
@@ -485,7 +477,10 @@ class Controller(object):
         """Update switch linkstate register for both link interfaces.
 
         The register array is indexed by the port number, e.g., the state for
-        port 0 is stored at index 0.
+        port 0 is stored at index 0. Note here that we only have two switch-to-switch links
+        and we had to expand the definition to capture the switch-to-router links as well. 
+        However, routers are not P4 enabled, so we filter these out with the if statements,
+        since the switch still needs to update the egress port it uses to communicate with the router in question
         """
         node1, node2 = link
         port1, port2 = self.get_ports(link)
@@ -499,13 +494,15 @@ class Controller(object):
             self.update_switch_linkstate(node2, port2, _state)
 
     def update_switch_linkstate(self, switch, port, state):
-        """Update the link state register on the device. """
+        """Update the link state register on the device. This is what actually triggers the P4 code, by flipping a bit."""
         control = self.controllers[switch]
         control.register_write('linkState', port, state)
 
-    # THE LFA CONTROLLER
+    # THE LFA CONTROLLER functions
     def install_link_register(self):
-        """install registers used to track linkstate."""
+        """install registers used to track linkstate. Initialises both the link-states and the heartbeat_register.
+        Note the call to self.accessible links which is generated by the self.setup_link_map call.
+        This is needed, as we have non-P4 routers as nexthops for the switches, which we need to monitor as well."""
         self.links_states = {}
         self.heartbeat_register = {}
         for link in self.accessible_links:
@@ -518,7 +515,9 @@ class Controller(object):
         print("Registers installed")
 
     def setup_link_map(self):
-        """Like Switchgraph, but also includes Routers"""
+        """The exercise originally used a Switchgraph from the Topology, which only captures the two switch-to-switch links.
+        Instead we use this function to generate a link map that has links except for host-to-switch and router-to-router.
+        The links that remain are links that can fail and that we have control over with P4."""
         self.accessible_links = []
         links_all = self.topo.network_graph.edges
         hosts = self.topo.get_hosts().keys()
@@ -570,11 +569,10 @@ class Controller(object):
         """
         return self.topo.node_to_node_port_num(node, nexthop_node)
 
-    def failure_notification(
-            self,
-            failures):  # This method gets called by the check_all_links method
-        """Called if a link fails.
-
+    def failure_notification(self, failures):
+        """Called if a link fails. The function inside could also just be called directly, but this format allows 
+        there to be more modularity in the code. A programmer can thus insert debug statements or logging statements here as well
+        and have the overall code still look clean.
         Args:
             failures (list(tuple(str, str))): List of failed links.
         """
@@ -582,6 +580,8 @@ class Controller(object):
 
     def dijkstra(self, failures=None):  #Imported from Exercise
         """Compute shortest paths and distances.
+        This was reused as it is already performance optimised, 
+        and the actual performance improvements are from how often this function gets called and not the function itself.
 
         Args:
             failures (list(tuple(str, str))): List of failed links.
@@ -638,7 +638,7 @@ class Controller(object):
         return results
 
     def install_macs(self):
-        """Install the port-to-mac map on all switches.
+        """Install the port-to-mac map on all switches. Needed to send gold traffic to the calculated next hop.
         """
         for switch, control in self.controllers.items():
             print "Installing MAC addresses for switch '%s'." % switch
@@ -662,10 +662,14 @@ class Controller(object):
                                   [str(index)])
 
     def update_nexthops_LFA(self, failures=None):
-        """Install nexthops in all switches."""
-        nexthops = self.compute_nexthops(
-            failures=failures
-        )  # We need to link the ECMP here with the LFA, so that the nexthops used here are the ECMP ones
+        """Install nexthops and LFAs in all switches. This is more general code that also allows for scenarios with multiple gold flows
+        instead of just the one in the testing scenario. This calculates the shortest path for Gold and its LFAs.
+        It utilises djikstras ability to account for failed links, which is critical for the high PRR we are aiming for.
+        The two registers allow the P4 code to know both where the gold traffic is supposed to go,
+        which allows it to check just the required One link status and then decides whether to send traffic to it or
+        whether it should switch to the LFA as a backup option. 
+        This was not extended to Silver and Bronze traffic, as those rely on using multipathing to circumvent link capacity limits."""
+        nexthops = self.compute_nexthops(failures=failures)
         lfas = self.compute_lfas(nexthops, failures=failures)
 
         for switch, destinations in nexthops.items():
@@ -676,18 +680,10 @@ class Controller(object):
                 # Write the port in the nexthop lookup register.
                 control.register_write('primaryNH', nexthop_id, port)
 
-        #######################################################################
-        # Compute loop-free alternate nexthops and install them below.
-        #######################################################################
-
-        # LFA solution.
-        # =============
-
             for host, nexthop in destinations:
                 nexthop_id = self.get_nexthop_index(host)
                 if host == nexthop:
                     continue  # Cannot do anything if host link fails.
-
                 try:
                     lfa_nexthop = lfas[switch][host]
                 except KeyError:
@@ -697,7 +693,8 @@ class Controller(object):
                 control.register_write('alternativeNH', nexthop_id, lfa_port)
 
     def compute_lfas(self, nexthops, failures=None):
-        """Compute LFA (loop-free alternates) for all nexthops."""
+        """Compute LFA (loop-free alternates) for all nexthops. Reused the Exercise solution code to reduce sources of failure,
+        but our own code from the exercises was equivalent in functionality, so the reuse changes little."""
         _d = self.dijkstra(failures=failures)[0]
         lfas = {}
 
@@ -732,8 +729,6 @@ class Controller(object):
                     # Keep LFA with shortest distance
                     switch_lfas[host] = min(noloop, key=lambda x: x[1])[0]
         return lfas
-
-    ####################### LFA INSTALL ################################
 
     def add_mirrors(self):
         """Add mirrors in the data plane to forward packets to the controllers.
@@ -818,22 +813,27 @@ class Controller(object):
 
                 # send heartbeat between S6-S1
                 # this is a BFD control packet
-                sendp(Ether(dst=dst_mac, src=src_mac, type=2048) / IP(
-                    version=4, tos=192, dst='9.0.0.1', proto=17, src='9.0.0.6')
-                      / UDP(sport=49156, dport=3784, len=32) / # udp addresses should be unique
-                      BFD(version=1,
-                          diag=0,
-                          your_discriminator=0,
-                          flags=32,
-                          my_discriminator=15,
-                          echo_rx_interval=50000,
-                          len=24,
-                          detect_mult=3,
-                          min_tx_interval=250000,
-                          min_rx_interval=250000,
-                          sta=1),
-                      iface='1-S6-cpu',
-                      verbose=False)
+                sendp(
+                    Ether(dst=dst_mac, src=src_mac, type=2048) /
+                    IP(version=4,
+                       tos=192,
+                       dst='9.0.0.1',
+                       proto=17,
+                       src='9.0.0.6') / UDP(sport=49156, dport=3784, len=32)
+                    /  # udp addresses should be unique
+                    BFD(version=1,
+                        diag=0,
+                        your_discriminator=0,
+                        flags=32,
+                        my_discriminator=15,
+                        echo_rx_interval=50000,
+                        len=24,
+                        detect_mult=3,
+                        min_tx_interval=250000,
+                        min_rx_interval=250000,
+                        sta=1),
+                    iface='1-S6-cpu',
+                    verbose=False)
 
                 # get the source and destination mac/ip adresses
                 src_mac = self.topo.node_to_node_mac('S4', 'S3')
@@ -841,22 +841,27 @@ class Controller(object):
 
                 # send heartbeat between S4-S3
                 # this is a BFD control packet
-                sendp(Ether(dst=dst_mac, src=src_mac, type=2048) / IP(
-                    version=4, tos=192, dst='9.0.0.3', proto=17, src='9.0.0.4')
-                      / UDP(sport=49155, dport=3784, len=32) / # udp addresses should be unique
-                      BFD(version=1,
-                          diag=0,
-                          your_discriminator=0,
-                          flags=32,
-                          my_discriminator=14,
-                          echo_rx_interval=50000,
-                          len=24,
-                          detect_mult=3,
-                          min_tx_interval=250000,
-                          min_rx_interval=250000,
-                          sta=1),
-                      iface='1-S4-cpu',
-                      verbose=False)
+                sendp(
+                    Ether(dst=dst_mac, src=src_mac, type=2048) /
+                    IP(version=4,
+                       tos=192,
+                       dst='9.0.0.3',
+                       proto=17,
+                       src='9.0.0.4') / UDP(sport=49155, dport=3784, len=32)
+                    /  # udp addresses should be unique
+                    BFD(version=1,
+                        diag=0,
+                        your_discriminator=0,
+                        flags=32,
+                        my_discriminator=14,
+                        echo_rx_interval=50000,
+                        len=24,
+                        detect_mult=3,
+                        min_tx_interval=250000,
+                        min_rx_interval=250000,
+                        sta=1),
+                    iface='1-S4-cpu',
+                    verbose=False)
 
                 # send the heartbeat packets every 0.1 seconds
                 time.sleep(0.1)
